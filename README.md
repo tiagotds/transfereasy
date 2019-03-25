@@ -54,7 +54,7 @@ body:
 }
 ```
 
-Cash out money of an account:
+Cash out money from an account:
 *POST* /api/accounts/cashOut
 body:
 ```
