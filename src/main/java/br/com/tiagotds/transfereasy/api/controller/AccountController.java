@@ -12,9 +12,9 @@ import javax.ws.rs.core.Response;
 
 import br.com.tiagotds.transfereasy.api.dto.AccountFullDto;
 import br.com.tiagotds.transfereasy.api.dto.BankStatementDto;
-import br.com.tiagotds.transfereasy.api.dto.CashInOutDto;
 import br.com.tiagotds.transfereasy.api.dto.OpenAccountDto;
-import br.com.tiagotds.transfereasy.api.dto.TransferDto;
+import br.com.tiagotds.transfereasy.api.dto.OperationDto;
+import br.com.tiagotds.transfereasy.api.dto.OperationDto.OperationType;
 import br.com.tiagotds.transfereasy.api.entity.Account;
 import br.com.tiagotds.transfereasy.api.mapper.AccountMapper;
 import br.com.tiagotds.transfereasy.api.service.AccountService;
@@ -85,102 +85,54 @@ public class AccountController {
 	}
 
 	@POST
-	@Path("/cashIn")
+	@Path("/{number}")
 	@Produces(MediaType.APPLICATION_JSON)
 	@Consumes(MediaType.APPLICATION_JSON)
-	public Response cashIn(@Valid CashInOutDto dto) {
+	public Response cashIn(@PathParam("number") String number, @Valid OperationDto dto) {
 		ResponseBody<AccountFullDto> response = new ResponseBody<>();
 		int error = 500;
 		boolean success = false;
 		try {
-			Account account = service.getAccountByNumber(dto.getAccountNumber());
+			Account account = service.getAccountByNumber(number);
 			if (account != null) {
-				success = service.cashIn(account, dto.getAmmount());
+				if (dto.getOperationType() == null) {
+					throw new TransfereasyException("Operation type invalid", ExceptionType.INVALID);
+				}
+
+				if (dto.getOperationType().equals(OperationType.IN)) {
+					success = service.cashIn(account, dto.getAmmount());
+				} else if (dto.getOperationType().equals(OperationType.OUT)) {
+					success = service.cashOut(account, dto.getAmmount());
+				} else {
+					if (dto.getToAccountNumber() == null || dto.getToAccountNumber().isEmpty()) {
+						throw new TransfereasyException("Destination account is missing", ExceptionType.INVALID);
+					}
+					Account toAccount;
+					try {
+						toAccount = service.getAccountByNumber(dto.getToAccountNumber());
+					} catch (TransfereasyException ex) {
+						if (ex.getType().equals(ExceptionType.NOT_FOUND)) {
+							throw new TransfereasyException("Destination account not found.", ExceptionType.NOT_FOUND);
+						}
+						throw ex;
+					}
+					if (toAccount != null) {
+
+						if (account.equals(toAccount)) {
+							throw new TransfereasyException("Origin and Destination accounts cannot be the same.",
+									ExceptionType.INVALID);
+						}
+
+						success = service.transfer(account, toAccount, dto.getAmmount());
+						if (success) {
+							response.setData(AccountMapper.accountToFullDto(account));
+							return Response.status(201).entity(response).build();
+						}
+					}
+				}
 				if (success) {
 					response.setData(AccountMapper.accountToFullDto(account));
-					return Response.ok(response).build();
-				}
-			}
-		} catch (TransfereasyException ex) {
-			if (ex.getType().equals(ExceptionType.NOT_FOUND)) {
-				error = 404;
-			} else if (ex.getType().equals(ExceptionType.INVALID)) {
-				error = 400;
-			}
-			response.getErrors().add(ex.getMessage());
-		}
-		return Response.status(error).entity(response).build();
-	}
-
-	@POST
-	@Path("/cashOut")
-	@Produces(MediaType.APPLICATION_JSON)
-	@Consumes(MediaType.APPLICATION_JSON)
-	public Response cashOut(@Valid CashInOutDto dto) {
-		ResponseBody<AccountFullDto> response = new ResponseBody<>();
-		int error = 500;
-		boolean success = false;
-		try {
-			Account account = service.getAccountByNumber(dto.getAccountNumber());
-			if (account != null) {
-				success = service.cashOut(account, dto.getAmmount());
-				if (success) {
-					response.setData(AccountMapper.accountToFullDto(account));
-					return Response.ok(response).build();
-				}
-			}
-		} catch (TransfereasyException ex) {
-			if (ex.getType().equals(ExceptionType.NOT_FOUND)) {
-				error = 404;
-			} else if (ex.getType().equals(ExceptionType.INVALID)
-					|| ex.getType().equals(ExceptionType.NO_BALANCE_ENOUGH)) {
-				error = 400;
-			}
-			response.getErrors().add(ex.getMessage());
-		}
-		return Response.status(error).entity(response).build();
-	}
-
-	@POST
-	@Path("/transfer")
-	@Produces(MediaType.APPLICATION_JSON)
-	@Consumes(MediaType.APPLICATION_JSON)
-	public Response Transfer(@Valid TransferDto dto) {
-		ResponseBody<AccountFullDto> response = new ResponseBody<>();
-		int error = 500;
-		boolean success = false;
-		try {
-			Account from = null;
-			Account to = null;
-			try {
-				from = service.getAccountByNumber(dto.getFromAccount());
-			} catch (TransfereasyException ex) {
-				if (ex.getType().equals(ExceptionType.NOT_FOUND)) {
-					throw new TransfereasyException("Origin account not found.", ExceptionType.NOT_FOUND);
-				}
-				throw ex;
-			}
-			if (from != null) {
-				try {
-					to = service.getAccountByNumber(dto.getToAccount());
-				} catch (TransfereasyException ex) {
-					if (ex.getType().equals(ExceptionType.NOT_FOUND)) {
-						throw new TransfereasyException("Destination account not found.", ExceptionType.NOT_FOUND);
-					}
-					throw ex;
-				}
-				if (to != null) {
-
-					if (from.equals(to)) {
-						throw new TransfereasyException("Origin and Destination accounts cannot be the same.",
-								ExceptionType.INVALID);
-					}
-
-					success = service.transfer(from, to, dto.getAmmount());
-					if (success) {
-						response.setData(AccountMapper.accountToFullDto(from));
-						return Response.ok(response).build();
-					}
+					return Response.status(201).entity(response).build();
 				}
 			}
 		} catch (TransfereasyException ex) {

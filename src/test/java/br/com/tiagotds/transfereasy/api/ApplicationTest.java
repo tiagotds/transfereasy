@@ -28,11 +28,11 @@ import br.com.tiagotds.transfereasy.api.controller.AccountController;
 import br.com.tiagotds.transfereasy.api.controller.CustomerController;
 import br.com.tiagotds.transfereasy.api.dto.AccountFullDto;
 import br.com.tiagotds.transfereasy.api.dto.BankStatementDto;
-import br.com.tiagotds.transfereasy.api.dto.CashInOutDto;
 import br.com.tiagotds.transfereasy.api.dto.CustomerAccountsDto;
 import br.com.tiagotds.transfereasy.api.dto.CustomerDto;
 import br.com.tiagotds.transfereasy.api.dto.OpenAccountDto;
-import br.com.tiagotds.transfereasy.api.dto.TransferDto;
+import br.com.tiagotds.transfereasy.api.dto.OperationDto;
+import br.com.tiagotds.transfereasy.api.dto.OperationDto.OperationType;
 import br.com.tiagotds.transfereasy.api.util.JSONUtils;
 import br.com.tiagotds.transfereasy.api.util.ResponseBody;
 
@@ -177,30 +177,31 @@ public class ApplicationTest {
 		customerAccounts = JSONUtils.cast(bodyCustomerAccount.getData(), CustomerAccountsDto.class);
 		assertTrue(customerAccounts.getAccounts().size() == 1);
 
-		CashInOutDto cashInOut = new CashInOutDto();
-		cashInOut.setAccountNumber("9999999999");
-		cashInOut.setAmmount(0);
+		OperationDto operation = new OperationDto();
+		operation.setAmmount(0);
+		operation.setOperationType(OperationType.IN);
 
-		response = sendAsyncPostRequest("/accounts/cashIn", JSONUtils.convertObjectToJsonString(cashInOut));
+		response = sendAsyncPostRequest("/accounts/9999999999", JSONUtils.convertObjectToJsonString(operation));
 		assertEquals(Response.Status.NOT_FOUND.getStatusCode(), response.getStatus());
 
 		bodyAccount = JSONUtils.convertJsonToObject(response.getContentAsString(), ResponseBody.class);
 		assertTrue(bodyAccount.getErrors().contains("Account not found"));
 
-		cashInOut.setAccountNumber(accountFirstCostumer.getNumber());
-		response = sendAsyncPostRequest("/accounts/cashIn", JSONUtils.convertObjectToJsonString(cashInOut));
+		response = sendAsyncPostRequest("/accounts/" + accountFirstCostumer.getNumber(),
+				JSONUtils.convertObjectToJsonString(operation));
 		assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
 
 		bodyAccount = JSONUtils.convertJsonToObject(response.getContentAsString(), ResponseBody.class);
 		assertTrue(bodyAccount.getErrors().contains("Invalid ammount."));
 
-		cashInOut.setAmmount(100);
-		response = sendAsyncPostRequest("/accounts/cashIn", JSONUtils.convertObjectToJsonString(cashInOut));
-		assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+		operation.setAmmount(100);
+		response = sendAsyncPostRequest("/accounts/" + accountFirstCostumer.getNumber(),
+				JSONUtils.convertObjectToJsonString(operation));
+		assertEquals(Response.Status.CREATED.getStatusCode(), response.getStatus());
 
 		bodyAccount = JSONUtils.convertJsonToObject(response.getContentAsString(), ResponseBody.class);
 		accountFirstCostumer = JSONUtils.cast(bodyAccount.getData(), AccountFullDto.class);
-		assertTrue(accountFirstCostumer.getBalance() == cashInOut.getAmmount());
+		assertTrue(accountFirstCostumer.getBalance() == operation.getAmmount());
 
 		response = sendAsyncGetRequest("/accounts/" + accountFirstCostumer.getNumber());
 		assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
@@ -209,79 +210,79 @@ public class ApplicationTest {
 		AccountFullDto account = JSONUtils.cast(bodyAccount.getData(), AccountFullDto.class);
 		assertTrue(accountFirstCostumer.getBalance() == account.getBalance());
 
-		cashInOut.setAccountNumber("9999999999");
-		cashInOut.setAmmount(0);
+		operation.setAmmount(0);
+		operation.setOperationType(OperationType.OUT);
 
-		response = sendAsyncPostRequest("/accounts/cashOut", JSONUtils.convertObjectToJsonString(cashInOut));
-		assertEquals(Response.Status.NOT_FOUND.getStatusCode(), response.getStatus());
-
-		bodyAccount = JSONUtils.convertJsonToObject(response.getContentAsString(), ResponseBody.class);
-		assertTrue(bodyAccount.getErrors().contains("Account not found"));
-
-		cashInOut.setAccountNumber(accountFirstCostumer.getNumber());
-		response = sendAsyncPostRequest("/accounts/cashOut", JSONUtils.convertObjectToJsonString(cashInOut));
+		response = sendAsyncPostRequest("/accounts/" + accountFirstCostumer.getNumber(),
+				JSONUtils.convertObjectToJsonString(operation));
 		assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
 
 		bodyAccount = JSONUtils.convertJsonToObject(response.getContentAsString(), ResponseBody.class);
 		assertTrue(bodyAccount.getErrors().contains("Invalid ammount."));
 
-		cashInOut.setAmmount(110);
-		response = sendAsyncPostRequest("/accounts/cashOut", JSONUtils.convertObjectToJsonString(cashInOut));
+		operation.setAmmount(110);
+		response = sendAsyncPostRequest("/accounts/" + accountFirstCostumer.getNumber(),
+				JSONUtils.convertObjectToJsonString(operation));
 		assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
 
 		bodyAccount = JSONUtils.convertJsonToObject(response.getContentAsString(), ResponseBody.class);
 		assertTrue(bodyAccount.getErrors().contains("There's no balance enough to do this transaction."));
 
-		cashInOut.setAmmount(10);
-		response = sendAsyncPostRequest("/accounts/cashOut", JSONUtils.convertObjectToJsonString(cashInOut));
-		assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+		operation.setAmmount(10);
+		response = sendAsyncPostRequest("/accounts/" + accountFirstCostumer.getNumber(),
+				JSONUtils.convertObjectToJsonString(operation));
+		assertEquals(Response.Status.CREATED.getStatusCode(), response.getStatus());
 
 		bodyAccount = JSONUtils.convertJsonToObject(response.getContentAsString(), ResponseBody.class);
 		accountFirstCostumer = JSONUtils.cast(bodyAccount.getData(), AccountFullDto.class);
 		assertTrue(accountFirstCostumer.getBalance() == 90);
 
-		TransferDto transfer = new TransferDto();
-		transfer.setFromAccount("99999999");
-		transfer.setToAccount("888888888");
-		transfer.setAmmount(0);
+		operation.setAmmount(0);
+		operation.setOperationType(OperationType.TRANSFER);
 
-		response = sendAsyncPostRequest("/accounts/transfer", JSONUtils.convertObjectToJsonString(transfer));
-		assertEquals(Response.Status.NOT_FOUND.getStatusCode(), response.getStatus());
+		response = sendAsyncPostRequest("/accounts/" + accountFirstCostumer.getNumber(),
+				JSONUtils.convertObjectToJsonString(operation));
+		assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
 
 		bodyAccount = JSONUtils.convertJsonToObject(response.getContentAsString(), ResponseBody.class);
-		assertTrue(bodyAccount.getErrors().contains("Origin account not found."));
+		assertTrue(bodyAccount.getErrors().contains("Destination account is missing"));
 
-		transfer.setFromAccount(accountFirstCostumer.getNumber());
-		response = sendAsyncPostRequest("/accounts/transfer", JSONUtils.convertObjectToJsonString(transfer));
+		operation.setToAccountNumber("999999999999");
+		response = sendAsyncPostRequest("/accounts/" + accountFirstCostumer.getNumber(),
+				JSONUtils.convertObjectToJsonString(operation));
 		assertEquals(Response.Status.NOT_FOUND.getStatusCode(), response.getStatus());
 
 		bodyAccount = JSONUtils.convertJsonToObject(response.getContentAsString(), ResponseBody.class);
 		assertTrue(bodyAccount.getErrors().contains("Destination account not found."));
 
-		transfer.setToAccount(accountFirstCostumer.getNumber());
-		response = sendAsyncPostRequest("/accounts/transfer", JSONUtils.convertObjectToJsonString(transfer));
+		operation.setToAccountNumber(accountFirstCostumer.getNumber());
+		response = sendAsyncPostRequest("/accounts/" + accountFirstCostumer.getNumber(),
+				JSONUtils.convertObjectToJsonString(operation));
 		assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
 
 		bodyAccount = JSONUtils.convertJsonToObject(response.getContentAsString(), ResponseBody.class);
 		assertTrue(bodyAccount.getErrors().contains("Origin and Destination accounts cannot be the same."));
 
-		transfer.setToAccount(accountSecondCostumer.getNumber());
-		response = sendAsyncPostRequest("/accounts/transfer", JSONUtils.convertObjectToJsonString(transfer));
+		operation.setToAccountNumber(accountSecondCostumer.getNumber());
+		response = sendAsyncPostRequest("/accounts/" + accountFirstCostumer.getNumber(),
+				JSONUtils.convertObjectToJsonString(operation));
 		assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
 
 		bodyAccount = JSONUtils.convertJsonToObject(response.getContentAsString(), ResponseBody.class);
 		assertTrue(bodyAccount.getErrors().contains("Invalid ammount."));
 
-		transfer.setAmmount(110);
-		response = sendAsyncPostRequest("/accounts/transfer", JSONUtils.convertObjectToJsonString(transfer));
+		operation.setAmmount(110);
+		response = sendAsyncPostRequest("/accounts/" + accountFirstCostumer.getNumber(),
+				JSONUtils.convertObjectToJsonString(operation));
 		assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
 
 		bodyAccount = JSONUtils.convertJsonToObject(response.getContentAsString(), ResponseBody.class);
 		assertTrue(bodyAccount.getErrors().contains("There's no balance enough to do this transaction."));
 
-		transfer.setAmmount(50);
-		response = sendAsyncPostRequest("/accounts/transfer", JSONUtils.convertObjectToJsonString(transfer));
-		assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+		operation.setAmmount(50);
+		response = sendAsyncPostRequest("/accounts/" + accountFirstCostumer.getNumber(),
+				JSONUtils.convertObjectToJsonString(operation));
+		assertEquals(Response.Status.CREATED.getStatusCode(), response.getStatus());
 
 		bodyAccount = JSONUtils.convertJsonToObject(response.getContentAsString(), ResponseBody.class);
 		accountFirstCostumer = JSONUtils.cast(bodyAccount.getData(), AccountFullDto.class);
@@ -292,7 +293,7 @@ public class ApplicationTest {
 
 		bodyAccount = JSONUtils.convertJsonToObject(response.getContentAsString(), ResponseBody.class);
 		accountSecondCostumer = JSONUtils.cast(bodyAccount.getData(), AccountFullDto.class);
-		assertTrue(accountSecondCostumer.getBalance() == transfer.getAmmount());
+		assertTrue(accountSecondCostumer.getBalance() == operation.getAmmount());
 
 		response = sendAsyncGetRequest("/accounts/99999999/bankStatement");
 		assertEquals(Response.Status.NOT_FOUND.getStatusCode(), response.getStatus());

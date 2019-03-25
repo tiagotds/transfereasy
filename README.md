@@ -45,32 +45,32 @@ See an existing account:
 *GET* /api/accounts/{accountNumber}
 
 Cash in money on an account:
-*POST* /api/accounts/cashIn
+*POST* /api/accounts/{accountNumber}
 body:
 ```
 {
-	"accountNumber": "gwet634u56i64434tfher63",
-	"ammount": 10
+	"ammount": 10,
+	"type": "IN"
 }
 ```
 
 Cash out money from an account:
-*POST* /api/accounts/cashOut
+*POST* /api/accounts/{accountNumber}
 body:
 ```
 {
-	"accountNumber": "gwet634u56i64434tfher63",
-	"ammount": 10
+	"ammount": 10,
+	"type": "OUT"
 }
 ```
 
 Transfer money between accounts:
-*POST* /api/accounts/transfer
+*POST* /api/accounts/{accountNumber}
 ```
 {
-	"fromAccount": "gwet634u56i64434tfher63",
-	"toAccount": "ty7u45ehjtrki6y4eje46",
-	"ammount": 10
+	"toAccountNumber": "gwet634u56i64434tfher63",
+	"ammount": 10,
+	"type": "TRANSFER"
 }
 ```
 
