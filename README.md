@@ -8,7 +8,7 @@ mvn package
 java -jar target/webapp.jar
 ```
 
-The endpoints to use this API are:
+The endpoints to use this API and the JSON request body examples in *POST* methods are:
 
 See all the customers:
 *GET* /api/customers/all
