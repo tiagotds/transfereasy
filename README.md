@@ -5,7 +5,7 @@ This is a REST API for making money transfers between accounts.
 It's a standalone application. To run it, you may execute the following commands in its path:
 ```
 mvn package
-java -jar target/webapp.jar
+java -jar target/transfereasy.jar
 ```
 
 The endpoints to use this API and the JSON request body examples in *POST* methods are:
