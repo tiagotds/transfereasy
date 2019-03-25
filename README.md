@@ -11,7 +11,7 @@ java -jar target/webapp.jar
 The endpoints to use this API and the JSON request body examples in *POST* methods are:
 
 See all the customers:
-*GET* /api/customers/all
+*GET* /api/customers
 
 To create a new customer:
 *POST* /api/customers
@@ -27,7 +27,7 @@ See an existing customer:
 *GET* /api/customers/{taxNumber}
 
 Find existing customers by name (or part of it):
-*GET* /api/customers/byName/{name}
+*GET* /api/customers?name={name}
 
 Create a new account:
 *POST* /api/accounts 

@@ -65,13 +65,13 @@ public class ApplicationTest {
 	@Test
 	public void customersTest()
 			throws URISyntaxException, JAXBException, JsonParseException, JsonMappingException, IOException {
-		MockHttpResponse response = sendAsyncGetRequest("/customers/all");
+		MockHttpResponse response = sendAsyncGetRequest("/customers");
 		assertEquals(Response.Status.NOT_FOUND.getStatusCode(), response.getStatus());
 
 		response = sendAsyncPostRequest("/customers", JSONUtils.convertObjectToJsonString(firstCustomer));
 		assertEquals(Response.Status.CREATED.getStatusCode(), response.getStatus());
 
-		response = sendAsyncGetRequest("/customers/all");
+		response = sendAsyncGetRequest("/customers");
 		assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
 
 		ResponseBody<List<CustomerDto>> bodyAll = JSONUtils.convertJsonToObject(response.getContentAsString(),
@@ -97,7 +97,7 @@ public class ApplicationTest {
 		response = sendAsyncPostRequest("/customers", JSONUtils.convertObjectToJsonString(secondCustomer));
 		assertEquals(Response.Status.CREATED.getStatusCode(), response.getStatus());
 
-		response = sendAsyncGetRequest("/customers/all");
+		response = sendAsyncGetRequest("/customers");
 		assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
 
 		bodyAll = JSONUtils.convertJsonToObject(response.getContentAsString(), ResponseBody.class);
@@ -116,13 +116,13 @@ public class ApplicationTest {
 		CustomerDto dto = JSONUtils.cast(bodyOne.getData(), CustomerDto.class);
 		assertTrue(dto.equals(firstCustomer));
 
-		response = sendAsyncGetRequest("/customers/byName/FULANO");
+		response = sendAsyncGetRequest("/customers?name=FULANO");
 		assertEquals(Response.Status.NOT_FOUND.getStatusCode(), response.getStatus());
 
 		bodyAll = JSONUtils.convertJsonToObject(response.getContentAsString(), ResponseBody.class);
 		assertTrue(bodyAll.getErrors().contains("Customers not found"));
 
-		response = sendAsyncGetRequest("/customers/byName/DONIZETE");
+		response = sendAsyncGetRequest("/customers?name=DONIZETE");
 		assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
 
 		bodyAll = JSONUtils.convertJsonToObject(response.getContentAsString(), ResponseBody.class);

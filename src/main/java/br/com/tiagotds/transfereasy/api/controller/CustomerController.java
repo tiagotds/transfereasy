@@ -9,6 +9,7 @@ import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
+import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
@@ -31,27 +32,16 @@ public class CustomerController {
 	}
 
 	@GET
-	@Path("/all")
 	@Produces(MediaType.APPLICATION_JSON)
-	public Response getAllCustomers() {
+	public Response getCustomersByName(@QueryParam("name") String name) {
 		ResponseBody<List<CustomerDto>> response = new ResponseBody<>();
 		try {
-			List<CustomerDto> customers = CustomerMapper.customersToDtos(customerService.getAllCustomers());
-			response.setData(customers);
-			return Response.ok(response).build();
-		} catch (TransfereasyException ex) {
-			response.getErrors().add(ex.getMessage());
-			return Response.status(404).entity(response).build();
-		}
-	}
-
-	@GET
-	@Path("/byName/{name}")
-	@Produces(MediaType.APPLICATION_JSON)
-	public Response getCustomersByName(@PathParam("name") String name) {
-		ResponseBody<List<CustomerDto>> response = new ResponseBody<>();
-		try {
-			List<CustomerDto> customers = CustomerMapper.customersToDtos(customerService.getCustomerByName(name));
+			List<CustomerDto> customers;
+			if (name == null || name.isEmpty()) {
+				customers = CustomerMapper.customersToDtos(customerService.getAllCustomers());
+			} else {
+				customers = CustomerMapper.customersToDtos(customerService.getCustomerByName(name));
+			}
 			response.setData(customers);
 			return Response.ok(response).build();
 		} catch (TransfereasyException ex) {
