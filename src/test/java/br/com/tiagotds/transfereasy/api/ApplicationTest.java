@@ -173,9 +173,9 @@ public class ApplicationTest {
 		response = sendAsyncGetRequest("/customers/" + firstCustomer.getTaxNumber() + "/accounts");
 		assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
 
-//		bodyCustomerAccount = JSONUtils.convertJsonToObject(response.getContentAsString(), ResponseBody.class);
-//		customerAccounts = JSONUtils.cast(bodyCustomerAccount.getData(), CustomerAccountsDto.class);
-//		assertTrue(customerAccounts.getAccounts().size() == 1);
+		bodyCustomerAccount = JSONUtils.convertJsonToObject(response.getContentAsString(), ResponseBody.class);
+		customerAccounts = JSONUtils.cast(bodyCustomerAccount.getData(), CustomerAccountsDto.class);
+		assertTrue(customerAccounts.getAccounts().size() == 1);
 
 		CashInOutDto cashInOut = new CashInOutDto();
 		cashInOut.setAccountNumber("9999999999");

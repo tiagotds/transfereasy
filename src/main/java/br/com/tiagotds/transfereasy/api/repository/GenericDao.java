@@ -64,13 +64,8 @@ public class GenericDao {
 		return entityManager.createQuery(cq).getResultList();
 	}
 
-	public void beginTransaction(boolean wasCalledInOtherProcess) throws InterruptedException {
+	public synchronized void beginTransaction(boolean wasCalledInOtherProcess) throws InterruptedException {
 		if (!wasCalledInOtherProcess) {
-			synchronized (entityManager.getTransaction()) {
-				while (entityManager.getTransaction().isActive()) {
-					entityManager.getTransaction().wait();
-				}
-			}
 			entityManager.getTransaction().begin();
 		}
 	}

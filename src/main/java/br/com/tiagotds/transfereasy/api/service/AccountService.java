@@ -31,15 +31,6 @@ public class AccountService {
 		}
 	}
 
-//	public List<Account> getAccountsByCustomer(Customer customer) throws RevolutTransferException {
-//		List<Account> accounts = dao.findByProperty(Account.class, "customer", customer);
-//		if (accounts != null && !accounts.isEmpty()) {
-//			return accounts;
-//		} else {
-//			throw new RevolutTransferException("Account not found", ExceptionType.NOT_FOUND);
-//		}
-//	}
-
 	public Account newAccount(OpenAccountDto dto) throws TransfereasyException {
 		Account account = new Account();
 		try {
@@ -47,19 +38,18 @@ public class AccountService {
 			if (customer != null) {
 				account.setCustomer(customer);
 				account.setNumber(generateAccountNumber());
+				customer.getAccounts().add(account);
 				try {
 					dao.beginTransaction();
-					int pk = dao.save(account);
-
-					if (pk > 0) {
+					Customer saved = dao.merge(customer);
+					if (saved.equals(customer)) {
 						dao.commitTransaction();
 					} else {
 						throw new Exception();
 					}
 				} catch (Exception ex) {
 					dao.rollbackTransaction();
-					throw new TransfereasyException("Error trying to create a new account.",
-							ExceptionType.UNDEFINED);
+					throw new TransfereasyException("Error trying to create a new account.", ExceptionType.UNDEFINED);
 				}
 
 			}
@@ -72,9 +62,7 @@ public class AccountService {
 	private boolean cashIn(Account account, double ammount, boolean isTransfer, String description)
 			throws TransfereasyException {
 		boolean result = false;
-		if (ammount <= 0) {
-			throw new TransfereasyException("Invalid ammount.", ExceptionType.INVALID);
-		}
+
 		Transaction transaction = new Transaction();
 		transaction.setAccount(account);
 		transaction.setAmmount(ammount);
@@ -96,35 +84,44 @@ public class AccountService {
 	private boolean cashOut(Account account, double ammount, boolean isTransfer, String description)
 			throws TransfereasyException {
 		boolean result = false;
-		if (ammount <= 0) {
-			throw new TransfereasyException("Invalid ammount.", ExceptionType.INVALID);
-		} else if (ammount > account.getBalance()) {
-			throw new TransfereasyException("There's no balance enough to do this transaction.",
-					ExceptionType.NO_BALANCE_ENOUGH);
-		}
-		Transaction transaction = new Transaction();
-		transaction.setAccount(account);
-		transaction.setAmmount(-ammount);
-		transaction.setDateTime(ZonedDateTime.now());
-		transaction.setDescription(description);
-		account.getTransactions().add(transaction);
+
 		try {
 			dao.beginTransaction(isTransfer);
+			if (ammount > account.getBalance()) {
+				throw new TransfereasyException("There's no balance enough to do this transaction.",
+						ExceptionType.NO_BALANCE_ENOUGH);
+			}
+			Transaction transaction = new Transaction();
+			transaction.setAccount(account);
+			transaction.setAmmount(-ammount);
+			transaction.setDateTime(ZonedDateTime.now());
+			transaction.setDescription(description);
+			account.getTransactions().add(transaction);
 			Account saved = dao.merge(account);
 			result = saved.equals(account);
 			dao.commitTransaction(isTransfer);
 		} catch (Exception ex) {
 			dao.rollbackTransaction(isTransfer);
-			throw new TransfereasyException(ex.getMessage(), ExceptionType.UNDEFINED);
+			if (ex instanceof TransfereasyException) {
+				throw (TransfereasyException) ex;
+			} else {
+				throw new TransfereasyException(ex.getMessage(), ExceptionType.UNDEFINED);
+			}
 		}
 		return result;
 	}
 
 	public boolean cashIn(Account account, double ammount) throws TransfereasyException {
+		if (ammount <= 0) {
+			throw new TransfereasyException("Invalid ammount.", ExceptionType.INVALID);
+		}
 		return cashIn(account, ammount, false, "Cash in");
 	}
 
 	public boolean cashOut(Account account, double ammount) throws TransfereasyException {
+		if (ammount <= 0) {
+			throw new TransfereasyException("Invalid ammount.", ExceptionType.INVALID);
+		}
 		return cashOut(account, ammount, false, "Cash out");
 	}
 
@@ -132,13 +129,11 @@ public class AccountService {
 		boolean result = false;
 		if (ammount <= 0) {
 			throw new TransfereasyException("Invalid ammount.", ExceptionType.INVALID);
-		} else if (ammount > from.getBalance()) {
-			throw new TransfereasyException("There's no balance enough to do this transaction.",
-					ExceptionType.NO_BALANCE_ENOUGH);
 		}
 
 		try {
 			dao.beginTransaction();
+
 			result = cashOut(from, ammount, true,
 					"Transfer to: " + to.getCustomer().getName() + " Account: " + to.getNumber())
 					&& cashIn(to, ammount, true,
@@ -146,7 +141,11 @@ public class AccountService {
 			dao.commitTransaction();
 		} catch (Exception ex) {
 			dao.rollbackTransaction();
-			throw new TransfereasyException(ex.getMessage(), ExceptionType.UNDEFINED);
+			if (ex instanceof TransfereasyException) {
+				throw (TransfereasyException) ex;
+			} else {
+				throw new TransfereasyException(ex.getMessage(), ExceptionType.UNDEFINED);
+			}
 		}
 		return result;
 	}
