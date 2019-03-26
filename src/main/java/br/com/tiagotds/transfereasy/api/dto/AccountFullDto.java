@@ -1,6 +1,6 @@
 package br.com.tiagotds.transfereasy.api.dto;
 
-public class AccountFullDto {
+public class AccountFullDto implements DefaultDto {
 
 	private String number;
 	private CustomerDto customer;

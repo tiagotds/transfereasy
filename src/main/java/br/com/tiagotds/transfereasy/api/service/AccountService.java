@@ -8,9 +8,9 @@ import br.com.tiagotds.transfereasy.api.dto.OpenAccountDto;
 import br.com.tiagotds.transfereasy.api.entity.Account;
 import br.com.tiagotds.transfereasy.api.entity.Customer;
 import br.com.tiagotds.transfereasy.api.entity.Transaction;
+import br.com.tiagotds.transfereasy.api.exception.TransfereasyException;
+import br.com.tiagotds.transfereasy.api.exception.TransfereasyException.ExceptionType;
 import br.com.tiagotds.transfereasy.api.repository.GenericDao;
-import br.com.tiagotds.transfereasy.api.util.TransfereasyException;
-import br.com.tiagotds.transfereasy.api.util.TransfereasyException.ExceptionType;
 
 public class AccountService {
 
@@ -63,6 +63,10 @@ public class AccountService {
 			throws TransfereasyException {
 		boolean result = false;
 
+		if (ammount <= 0) {
+			throw new TransfereasyException("Invalid ammount.", ExceptionType.INVALID);
+		}
+
 		Transaction transaction = new Transaction();
 		transaction.setAccount(account);
 		transaction.setAmmount(ammount);
@@ -84,6 +88,10 @@ public class AccountService {
 	private boolean cashOut(Account account, double ammount, boolean isTransfer, String description)
 			throws TransfereasyException {
 		boolean result = false;
+
+		if (ammount <= 0) {
+			throw new TransfereasyException("Invalid ammount.", ExceptionType.INVALID);
+		}
 
 		try {
 			dao.beginTransaction(isTransfer);
@@ -112,25 +120,15 @@ public class AccountService {
 	}
 
 	public boolean cashIn(Account account, double ammount) throws TransfereasyException {
-		if (ammount <= 0) {
-			throw new TransfereasyException("Invalid ammount.", ExceptionType.INVALID);
-		}
 		return cashIn(account, ammount, false, "Cash in");
 	}
 
 	public boolean cashOut(Account account, double ammount) throws TransfereasyException {
-		if (ammount <= 0) {
-			throw new TransfereasyException("Invalid ammount.", ExceptionType.INVALID);
-		}
 		return cashOut(account, ammount, false, "Cash out");
 	}
 
 	public boolean transfer(Account from, Account to, double ammount) throws TransfereasyException {
 		boolean result = false;
-		if (ammount <= 0) {
-			throw new TransfereasyException("Invalid ammount.", ExceptionType.INVALID);
-		}
-
 		try {
 			dao.beginTransaction();
 

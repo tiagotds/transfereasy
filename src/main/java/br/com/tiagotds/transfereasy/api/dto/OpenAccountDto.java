@@ -1,7 +1,10 @@
 package br.com.tiagotds.transfereasy.api.dto;
 
-public class OpenAccountDto {
+import org.hibernate.validator.constraints.NotEmpty;
 
+public class OpenAccountDto implements DefaultDto {
+
+	@NotEmpty(message = "Tax number is required")
 	private String taxNumber;
 
 	public String getTaxNumber() {

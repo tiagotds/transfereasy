@@ -1,13 +1,20 @@
 package br.com.tiagotds.transfereasy.api.dto;
 
-public class OperationDto {
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
+import javax.validation.constraints.NotNull;
+
+public class OperationDto implements DefaultDto {
 
 	public enum OperationType {
 		IN, OUT, TRANSFER
 	}
 
 	private String toAccountNumber;
+	@NotNull(message = "Invalid ammount.")
 	private double ammount;
+	@NotNull(message = "Type must be \"IN\", \"OUT\" or \"TRANSFER\"")
+	@Enumerated(EnumType.STRING)
 	private OperationType type;
 
 	public String getToAccountNumber() {
@@ -26,11 +33,11 @@ public class OperationDto {
 		this.ammount = ammount;
 	}
 
-	public OperationType getOperationType() {
+	public OperationType getType() {
 		return type;
 	}
 
-	public void setOperationType(OperationType type) {
+	public void setType(OperationType type) {
 		this.type = type;
 	}
 

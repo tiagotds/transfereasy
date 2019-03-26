@@ -1,6 +1,8 @@
-package br.com.tiagotds.transfereasy.api.util;
+package br.com.tiagotds.transfereasy.api.exception;
 
-public class TransfereasyException extends Exception {
+import java.io.Serializable;
+
+public class TransfereasyException extends Exception implements Serializable {
 
 	/**
 	 * 

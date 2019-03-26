@@ -4,12 +4,12 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.URISyntaxException;
 import java.util.List;
 
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import javax.xml.bind.JAXBException;
 
 import org.codehaus.jackson.JsonParseException;
 import org.codehaus.jackson.map.JsonMappingException;
@@ -33,6 +33,10 @@ import br.com.tiagotds.transfereasy.api.dto.CustomerDto;
 import br.com.tiagotds.transfereasy.api.dto.OpenAccountDto;
 import br.com.tiagotds.transfereasy.api.dto.OperationDto;
 import br.com.tiagotds.transfereasy.api.dto.OperationDto.OperationType;
+import br.com.tiagotds.transfereasy.api.exception.InvalidEntryJsonHandler;
+import br.com.tiagotds.transfereasy.api.exception.InvalidJsonEnumHandler;
+import br.com.tiagotds.transfereasy.api.exception.InvalidJsonHandler;
+import br.com.tiagotds.transfereasy.api.exception.TransfereasyExceptionHandler;
 import br.com.tiagotds.transfereasy.api.util.JSONUtils;
 import br.com.tiagotds.transfereasy.api.util.ResponseBody;
 
@@ -48,10 +52,15 @@ public class ApplicationTest {
 	private static AccountFullDto accountSecondCostumer;
 
 	@BeforeClass
-	public static void beforeClass() throws Exception {
+	public static void beforeClass() {
 		dispatcher = MockDispatcherFactory.createDispatcher();
 		dispatcher.getRegistry().addSingletonResource(new CustomerController());
 		dispatcher.getRegistry().addSingletonResource(new AccountController());
+
+		dispatcher.getProviderFactory().registerProvider(TransfereasyExceptionHandler.class);
+		dispatcher.getProviderFactory().registerProvider(InvalidEntryJsonHandler.class);
+		dispatcher.getProviderFactory().registerProvider(InvalidJsonHandler.class);
+		dispatcher.getProviderFactory().registerProvider(InvalidJsonEnumHandler.class);
 
 		firstCustomer = new CustomerDto();
 		firstCustomer.setName("TIAGO DONIZETE DOS SANTOS");
@@ -63,8 +72,7 @@ public class ApplicationTest {
 	}
 
 	@Test
-	public void customersTest()
-			throws URISyntaxException, JAXBException, JsonParseException, JsonMappingException, IOException {
+	public void customersTest() throws URISyntaxException, JsonParseException, JsonMappingException, IOException {
 		MockHttpResponse response = sendAsyncGetRequest("/customers");
 		assertEquals(Response.Status.NOT_FOUND.getStatusCode(), response.getStatus());
 
@@ -130,8 +138,8 @@ public class ApplicationTest {
 	}
 
 	@Test
-	public void accountsTest()
-			throws JsonParseException, JsonMappingException, URISyntaxException, JAXBException, IOException {
+	public void accountsTest() throws URISyntaxException, JsonParseException, JsonMappingException,
+			UnsupportedEncodingException, IOException {
 		MockHttpResponse response = sendAsyncGetRequest("/customers/" + firstCustomer.getTaxNumber() + "/accounts");
 		assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
 
@@ -179,7 +187,7 @@ public class ApplicationTest {
 
 		OperationDto operation = new OperationDto();
 		operation.setAmmount(0);
-		operation.setOperationType(OperationType.IN);
+		operation.setType(OperationType.IN);
 
 		response = sendAsyncPostRequest("/accounts/9999999999", JSONUtils.convertObjectToJsonString(operation));
 		assertEquals(Response.Status.NOT_FOUND.getStatusCode(), response.getStatus());
@@ -211,7 +219,7 @@ public class ApplicationTest {
 		assertTrue(accountFirstCostumer.getBalance() == account.getBalance());
 
 		operation.setAmmount(0);
-		operation.setOperationType(OperationType.OUT);
+		operation.setType(OperationType.OUT);
 
 		response = sendAsyncPostRequest("/accounts/" + accountFirstCostumer.getNumber(),
 				JSONUtils.convertObjectToJsonString(operation));
@@ -238,7 +246,7 @@ public class ApplicationTest {
 		assertTrue(accountFirstCostumer.getBalance() == 90);
 
 		operation.setAmmount(0);
-		operation.setOperationType(OperationType.TRANSFER);
+		operation.setType(OperationType.TRANSFER);
 
 		response = sendAsyncPostRequest("/accounts/" + accountFirstCostumer.getNumber(),
 				JSONUtils.convertObjectToJsonString(operation));
@@ -310,7 +318,7 @@ public class ApplicationTest {
 		assertTrue(statement.getBankStatement().size() == 3);
 	}
 
-	public MockHttpResponse sendAsyncGetRequest(String path) throws URISyntaxException, JAXBException {
+	public MockHttpResponse sendAsyncGetRequest(String path) throws URISyntaxException {
 		MockHttpRequest request = MockHttpRequest.get(path);
 		request.accept(MediaType.APPLICATION_JSON);
 
@@ -321,8 +329,7 @@ public class ApplicationTest {
 		return sendHttpRequest(request, response);
 	}
 
-	public MockHttpResponse sendAsyncPostRequest(String path, String requestBody)
-			throws URISyntaxException, JAXBException {
+	public MockHttpResponse sendAsyncPostRequest(String path, String requestBody) throws URISyntaxException {
 
 		MockHttpRequest request = MockHttpRequest.post(path);
 		request.accept(MediaType.APPLICATION_JSON);
@@ -336,8 +343,7 @@ public class ApplicationTest {
 		return sendHttpRequest(request, response);
 	}
 
-	private MockHttpResponse sendHttpRequest(MockHttpRequest request, MockHttpResponse response)
-			throws URISyntaxException {
+	private MockHttpResponse sendHttpRequest(MockHttpRequest request, MockHttpResponse response) {
 		dispatcher.invoke(request, response);
 		return response;
 	}

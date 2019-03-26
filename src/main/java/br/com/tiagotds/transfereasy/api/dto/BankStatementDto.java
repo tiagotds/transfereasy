@@ -3,7 +3,7 @@ package br.com.tiagotds.transfereasy.api.dto;
 import java.util.ArrayList;
 import java.util.List;
 
-public class BankStatementDto extends AccountFullDto {
+public class BankStatementDto extends AccountFullDto  {
 
 	private List<TransactionDto> bankStatement;
 

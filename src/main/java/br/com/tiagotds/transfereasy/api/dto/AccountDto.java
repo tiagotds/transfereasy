@@ -1,6 +1,6 @@
 package br.com.tiagotds.transfereasy.api.dto;
 
-public class AccountDto {
+public class AccountDto implements DefaultDto {
 
 	private String number;
 	private double balance;

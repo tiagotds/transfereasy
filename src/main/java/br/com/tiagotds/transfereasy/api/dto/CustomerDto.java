@@ -1,8 +1,12 @@
 package br.com.tiagotds.transfereasy.api.dto;
 
-public class CustomerDto {
+import org.hibernate.validator.constraints.NotEmpty;
 
+public class CustomerDto implements DefaultDto {
+
+	@NotEmpty(message = "Name is required")
 	public String name;
+	@NotEmpty(message = "Tax number number is required")
 	public String taxNumber;
 
 	public String getName() {

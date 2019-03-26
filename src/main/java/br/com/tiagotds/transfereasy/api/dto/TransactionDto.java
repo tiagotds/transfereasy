@@ -1,8 +1,6 @@
 package br.com.tiagotds.transfereasy.api.dto;
 
-import java.time.ZonedDateTime;
-
-public class TransactionDto {
+public class TransactionDto implements DefaultDto {
 
 	private String dateTime;
 	private String Description;

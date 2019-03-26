@@ -4,10 +4,10 @@ import java.util.List;
 
 import br.com.tiagotds.transfereasy.api.dto.CustomerDto;
 import br.com.tiagotds.transfereasy.api.entity.Customer;
+import br.com.tiagotds.transfereasy.api.exception.TransfereasyException;
+import br.com.tiagotds.transfereasy.api.exception.TransfereasyException.ExceptionType;
 import br.com.tiagotds.transfereasy.api.repository.GenericDao;
 import br.com.tiagotds.transfereasy.api.repository.GenericDao.MatchMode;
-import br.com.tiagotds.transfereasy.api.util.TransfereasyException;
-import br.com.tiagotds.transfereasy.api.util.TransfereasyException.ExceptionType;
 
 public class CustomerService {
 
