@@ -1,0 +1,273 @@
+package br.com.tiagotds.transfereasy.service;
+
+import static br.com.tiagotds.transfereasy.support.Money.of;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import br.com.tiagotds.transfereasy.domain.DomainException;
+import br.com.tiagotds.transfereasy.domain.DomainException.Code;
+import br.com.tiagotds.transfereasy.domain.EntryKind;
+import br.com.tiagotds.transfereasy.support.TestEnvironment;
+import java.math.BigDecimal;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+
+class AccountServiceTest {
+
+    private TestEnvironment env;
+
+    @BeforeEach
+    void setUp() {
+        env = new TestEnvironment();
+    }
+
+    @AfterEach
+    void tearDown() {
+        env.close();
+    }
+
+    private static Code codeOf(Runnable action) {
+        return assertThrows(DomainException.class, action::run).code();
+    }
+
+    @Nested
+    class OpeningAccounts {
+
+        @Test
+        void a_new_account_starts_with_zero_balance() {
+            env.customers.create("111", "Ada");
+
+            var account = env.accounts.open("111");
+
+            assertEquals(of("0"), account.balance());
+            assertEquals(32, account.number().length());
+        }
+
+        @Test
+        void opening_an_account_for_an_unknown_customer_is_not_found() {
+            assertEquals(Code.NOT_FOUND, codeOf(() -> env.accounts.open("missing")));
+        }
+
+        @Test
+        void opening_an_account_without_tax_number_is_invalid() {
+            assertEquals(Code.INVALID, codeOf(() -> env.accounts.open(" ")));
+            assertEquals(Code.INVALID, codeOf(() -> env.accounts.open(null)));
+        }
+
+        @Test
+        void a_customer_can_hold_several_accounts() {
+            env.customers.create("111", "Ada");
+            var first = env.accounts.open("111");
+            var second = env.accounts.open("111");
+
+            assertEquals(2, env.customers.accountsOf("111").size());
+            assertTrue(!first.number().equals(second.number()));
+        }
+    }
+
+    @Nested
+    class Deposits {
+
+        @Test
+        void a_deposit_increases_the_balance_and_is_recorded_in_the_ledger() {
+            var number = env.accountWithBalance("111", "0");
+
+            var updated = env.accounts.deposit(number, of("25.50"));
+
+            assertEquals(of("25.50"), updated.balance());
+            var entry = env.accounts.statement(number, null).entries().getFirst();
+            assertEquals(EntryKind.DEPOSIT, entry.kind());
+            assertEquals(of("25.50"), entry.amount());
+            assertEquals(of("25.50"), entry.balanceAfter());
+        }
+
+        @Test
+        void a_deposit_into_an_unknown_account_is_not_found() {
+            assertEquals(Code.NOT_FOUND, codeOf(() -> env.accounts.deposit("nope", of("1"))));
+        }
+
+        @Test
+        void invalid_amounts_are_rejected_and_leave_no_trace() {
+            var number = env.accountWithBalance("111", "10");
+
+            for (var bad : new BigDecimal[]{null, BigDecimal.ZERO, new BigDecimal("-1"),
+                    new BigDecimal("0.001"), new BigDecimal("1000000000000.01")}) {
+                assertEquals(Code.INVALID, codeOf(() -> env.accounts.deposit(number, bad)), "amount " + bad);
+            }
+            assertEquals(of("10"), env.balanceOf(number));
+            assertEquals(1, env.accounts.statement(number, null).entries().size());
+        }
+
+        @Test
+        void amounts_with_redundant_trailing_zeros_are_accepted() {
+            var number = env.accountWithBalance("111", "0");
+
+            env.accounts.deposit(number, new BigDecimal("5.100"));
+
+            assertEquals(of("5.10"), env.balanceOf(number));
+        }
+    }
+
+    @Nested
+    class Withdrawals {
+
+        @Test
+        void a_withdrawal_decreases_the_balance_and_records_a_negative_entry() {
+            var number = env.accountWithBalance("111", "100");
+
+            var updated = env.accounts.withdraw(number, of("40"));
+
+            assertEquals(of("60"), updated.balance());
+            var entry = env.accounts.statement(number, null).entries().getFirst();
+            assertEquals(EntryKind.WITHDRAWAL, entry.kind());
+            assertEquals(of("-40"), entry.amount());
+        }
+
+        @Test
+        void withdrawing_the_exact_balance_is_allowed() {
+            var number = env.accountWithBalance("111", "100");
+
+            assertEquals(of("0"), env.accounts.withdraw(number, of("100")).balance());
+        }
+
+        @Test
+        void withdrawing_more_than_the_balance_is_refused_and_changes_nothing() {
+            var number = env.accountWithBalance("111", "100");
+
+            assertEquals(Code.INSUFFICIENT_FUNDS, codeOf(() -> env.accounts.withdraw(number, of("100.01"))));
+
+            assertEquals(of("100"), env.balanceOf(number));
+            assertEquals(1, env.accounts.statement(number, null).entries().size());
+        }
+
+        @Test
+        void withdrawing_from_an_unknown_account_is_not_found() {
+            assertEquals(Code.NOT_FOUND, codeOf(() -> env.accounts.withdraw("nope", of("1"))));
+        }
+    }
+
+    @Nested
+    class Transfers {
+
+        @Test
+        void a_transfer_moves_money_and_writes_two_linked_ledger_entries() {
+            var from = env.accountWithBalance("111", "100");
+            var to = env.accountWithBalance("222", "5");
+
+            var receipt = env.accounts.transfer(from, to, of("30"));
+
+            assertEquals(of("70"), receipt.from().balance());
+            assertEquals(of("35"), receipt.to().balance());
+            var out = env.accounts.statement(from, null).entries().getFirst();
+            var in = env.accounts.statement(to, null).entries().getFirst();
+            assertEquals(EntryKind.TRANSFER_OUT, out.kind());
+            assertEquals(EntryKind.TRANSFER_IN, in.kind());
+            assertEquals(receipt.transferId(), out.transferId());
+            assertEquals(receipt.transferId(), in.transferId());
+            assertEquals(to, out.counterpartyAccountNumber());
+            assertEquals(from, in.counterpartyAccountNumber());
+        }
+
+        @Test
+        void a_transfer_without_enough_funds_changes_neither_account() {
+            var from = env.accountWithBalance("111", "10");
+            var to = env.accountWithBalance("222", "0");
+
+            assertEquals(Code.INSUFFICIENT_FUNDS, codeOf(() -> env.accounts.transfer(from, to, of("10.01"))));
+
+            assertEquals(of("10"), env.balanceOf(from));
+            assertEquals(of("0"), env.balanceOf(to));
+            assertTrue(env.accounts.statement(to, null).entries().isEmpty());
+        }
+
+        @Test
+        void a_transfer_to_an_unknown_destination_changes_nothing() {
+            var from = env.accountWithBalance("111", "10");
+
+            assertEquals(Code.NOT_FOUND, codeOf(() -> env.accounts.transfer(from, "ghost", of("1"))));
+
+            assertEquals(of("10"), env.balanceOf(from));
+        }
+
+        @Test
+        void a_transfer_from_an_unknown_origin_is_not_found() {
+            var to = env.accountWithBalance("222", "0");
+
+            assertEquals(Code.NOT_FOUND, codeOf(() -> env.accounts.transfer("ghost", to, of("1"))));
+        }
+
+        @Test
+        void transferring_to_the_same_account_is_invalid() {
+            var number = env.accountWithBalance("111", "10");
+
+            assertEquals(Code.INVALID, codeOf(() -> env.accounts.transfer(number, number, of("1"))));
+        }
+
+        @Test
+        void a_missing_destination_is_invalid() {
+            var number = env.accountWithBalance("111", "10");
+
+            assertEquals(Code.INVALID, codeOf(() -> env.accounts.transfer(number, null, of("1"))));
+            assertEquals(Code.INVALID, codeOf(() -> env.accounts.transfer(number, " ", of("1"))));
+        }
+
+        @Test
+        void a_transfer_with_an_invalid_amount_is_invalid() {
+            var from = env.accountWithBalance("111", "10");
+            var to = env.accountWithBalance("222", "0");
+
+            assertEquals(Code.INVALID, codeOf(() -> env.accounts.transfer(from, to, of("0"))));
+        }
+    }
+
+    @Nested
+    class Statements {
+
+        @Test
+        void entries_are_returned_newest_first() {
+            var number = env.accountWithBalance("111", "0");
+            env.accounts.deposit(number, of("1"));
+            env.accounts.deposit(number, of("2"));
+            env.accounts.withdraw(number, of("0.50"));
+
+            var entries = env.accounts.statement(number, null).entries();
+
+            assertEquals(3, entries.size());
+            assertEquals(of("-0.50"), entries.get(0).amount());
+            assertEquals(of("2"), entries.get(1).amount());
+            assertEquals(of("1"), entries.get(2).amount());
+            assertEquals(of("2.50"), entries.getFirst().balanceAfter());
+        }
+
+        @Test
+        void the_limit_caps_the_number_of_entries() {
+            var number = env.accountWithBalance("111", "0");
+            for (int i = 0; i < 5; i++) {
+                env.accounts.deposit(number, of("1"));
+            }
+
+            assertEquals(2, env.accounts.statement(number, 2).entries().size());
+        }
+
+        @Test
+        void an_out_of_range_limit_is_invalid() {
+            var number = env.accountWithBalance("111", "0");
+
+            assertEquals(Code.INVALID, codeOf(() -> env.accounts.statement(number, 0)));
+            assertEquals(Code.INVALID, codeOf(() -> env.accounts.statement(number, 1001)));
+        }
+
+        @Test
+        void a_statement_for_an_unknown_account_is_not_found() {
+            assertEquals(Code.NOT_FOUND, codeOf(() -> env.accounts.statement("ghost", null)));
+        }
+
+        @Test
+        void getting_an_unknown_account_is_not_found() {
+            assertEquals(Code.NOT_FOUND, codeOf(() -> env.accounts.get("ghost")));
+        }
+    }
+}
