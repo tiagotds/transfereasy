@@ -2,7 +2,9 @@ package br.com.tiagotds.transfereasy.repository;
 
 import static br.com.tiagotds.transfereasy.jooq.Tables.ACCOUNTS;
 
-import br.com.tiagotds.transfereasy.domain.Account;
+import br.com.tiagotds.transfereasy.domain.model.Account;
+import br.com.tiagotds.transfereasy.domain.model.AccountNumber;
+import br.com.tiagotds.transfereasy.domain.model.Money;
 import br.com.tiagotds.transfereasy.jooq.tables.records.AccountsRecord;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -45,6 +47,7 @@ public final class AccountRepository {
     public Account credit(DSLContext tx, long accountId, BigDecimal amount) {
         return toDomain(tx.update(ACCOUNTS)
                 .set(ACCOUNTS.BALANCE, ACCOUNTS.BALANCE.plus(amount))
+                .set(ACCOUNTS.VERSION, ACCOUNTS.VERSION.plus(1))
                 .where(ACCOUNTS.ID.eq(accountId))
                 .returning().fetchSingle());
     }
@@ -58,11 +61,13 @@ public final class AccountRepository {
     public Optional<Account> debitIfSufficient(DSLContext tx, long accountId, BigDecimal amount) {
         return tx.update(ACCOUNTS)
                 .set(ACCOUNTS.BALANCE, ACCOUNTS.BALANCE.minus(amount))
+                .set(ACCOUNTS.VERSION, ACCOUNTS.VERSION.plus(1))
                 .where(ACCOUNTS.ID.eq(accountId).and(ACCOUNTS.BALANCE.ge(amount)))
                 .returning().fetchOptional().map(AccountRepository::toDomain);
     }
 
     private static Account toDomain(AccountsRecord r) {
-        return new Account(r.getId(), r.getAccountNumber(), r.getCustomerId(), r.getBalance(), r.getCreatedAt());
+        return new Account(r.getId(), AccountNumber.of(r.getAccountNumber()), r.getCustomerId(),
+                Money.of(r.getBalance()), r.getVersion(), r.getCreatedAt());
     }
 }

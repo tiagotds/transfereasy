@@ -1,8 +1,8 @@
 package br.com.tiagotds.transfereasy.http;
 
-import br.com.tiagotds.transfereasy.domain.Account;
-import br.com.tiagotds.transfereasy.domain.Customer;
-import br.com.tiagotds.transfereasy.domain.LedgerEntry;
+import br.com.tiagotds.transfereasy.domain.model.Account;
+import br.com.tiagotds.transfereasy.domain.model.Customer;
+import br.com.tiagotds.transfereasy.domain.model.LedgerEntry;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -29,13 +29,13 @@ public final class Dtos {
     // ---- responses
     public record CustomerResponse(String taxNumber, String name, OffsetDateTime createdAt) {
         static CustomerResponse of(Customer c) {
-            return new CustomerResponse(c.taxNumber(), c.name(), c.createdAt());
+            return new CustomerResponse(c.taxNumber().value(), c.name().value(), c.createdAt());
         }
     }
 
     public record AccountResponse(String number, BigDecimal balance, OffsetDateTime createdAt) {
         static AccountResponse of(Account a) {
-            return new AccountResponse(a.number(), a.balance(), a.createdAt());
+            return new AccountResponse(a.number().value(), a.balance().value(), a.createdAt());
         }
     }
 
@@ -45,8 +45,8 @@ public final class Dtos {
     public record EntryResponse(long id, String kind, BigDecimal amount, BigDecimal balanceAfter,
                                 String counterpartyAccountNumber, String transferId, OffsetDateTime createdAt) {
         static EntryResponse of(LedgerEntry e) {
-            return new EntryResponse(e.id(), e.kind().name(), e.amount(), e.balanceAfter(),
-                    e.counterpartyAccountNumber(), e.transferId(), e.createdAt());
+            return new EntryResponse(e.id(), e.kind().name(), e.amount(), e.balanceAfter().value(),
+                    e.counterparty() == null ? null : e.counterparty().value(), e.transferId(), e.createdAt());
         }
     }
 

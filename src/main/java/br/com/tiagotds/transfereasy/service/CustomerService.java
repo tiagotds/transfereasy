@@ -1,8 +1,8 @@
 package br.com.tiagotds.transfereasy.service;
 
 import br.com.tiagotds.transfereasy.db.TransactionRunner;
-import br.com.tiagotds.transfereasy.domain.Account;
-import br.com.tiagotds.transfereasy.domain.Customer;
+import br.com.tiagotds.transfereasy.domain.model.Account;
+import br.com.tiagotds.transfereasy.domain.model.Customer;
 import br.com.tiagotds.transfereasy.domain.error.Conflict;
 import br.com.tiagotds.transfereasy.domain.error.NotFound;
 import br.com.tiagotds.transfereasy.domain.model.CustomerName;

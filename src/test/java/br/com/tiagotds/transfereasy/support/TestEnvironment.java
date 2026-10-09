@@ -46,7 +46,7 @@ public final class TestEnvironment implements AutoCloseable {
     /** Creates a customer with one account holding {@code balance}, and returns the account number. */
     public String accountWithBalance(String taxNumber, String balance) {
         customers.create(taxNumber, "Customer " + taxNumber);
-        var number = accounts.open(taxNumber).number();
+        var number = accounts.open(taxNumber).number().value();
         if (new BigDecimal(balance).signum() > 0) {
             accounts.deposit(number, new BigDecimal(balance));
         }
@@ -54,7 +54,7 @@ public final class TestEnvironment implements AutoCloseable {
     }
 
     public BigDecimal balanceOf(String accountNumber) {
-        return accounts.get(accountNumber).balance();
+        return accounts.get(accountNumber).balance().value();
     }
 
     public BigDecimal totalOfAllBalances() {

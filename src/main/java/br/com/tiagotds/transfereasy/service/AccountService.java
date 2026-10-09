@@ -1,16 +1,16 @@
 package br.com.tiagotds.transfereasy.service;
 
 import br.com.tiagotds.transfereasy.db.TransactionRunner;
-import br.com.tiagotds.transfereasy.domain.Account;
+import br.com.tiagotds.transfereasy.domain.model.Account;
 import br.com.tiagotds.transfereasy.domain.error.InsufficientFunds;
 import br.com.tiagotds.transfereasy.domain.error.InvalidInput;
 import br.com.tiagotds.transfereasy.domain.error.NotFound;
 import br.com.tiagotds.transfereasy.domain.model.AccountNumber;
 import br.com.tiagotds.transfereasy.domain.model.AmountPolicy;
 import br.com.tiagotds.transfereasy.domain.model.TaxNumber;
-import br.com.tiagotds.transfereasy.domain.EntryKind;
-import br.com.tiagotds.transfereasy.domain.Statement;
-import br.com.tiagotds.transfereasy.domain.TransferReceipt;
+import br.com.tiagotds.transfereasy.domain.model.EntryKind;
+import br.com.tiagotds.transfereasy.domain.model.Statement;
+import br.com.tiagotds.transfereasy.domain.model.TransferReceipt;
 import br.com.tiagotds.transfereasy.infrastructure.config.StatementSettings;
 import br.com.tiagotds.transfereasy.repository.AccountRepository;
 import br.com.tiagotds.transfereasy.repository.CustomerRepository;
@@ -82,7 +82,7 @@ public final class AccountService {
         return tx.inTransaction(db -> {
             var account = accounts.findByNumber(db, number).orElseThrow(() -> accountNotFound(number));
             var updated = accounts.credit(db, account.id(), amount);
-            ledger.append(db, account.id(), EntryKind.DEPOSIT, amount, updated.balance(), null, null, now());
+            ledger.append(db, account.id(), EntryKind.DEPOSIT, amount, updated.balance().value(), null, null, now());
             return updated;
         });
     }
@@ -93,7 +93,7 @@ public final class AccountService {
             var account = accounts.findByNumber(db, number).orElseThrow(() -> accountNotFound(number));
             var updated = accounts.debitIfSufficient(db, account.id(), amount)
                     .orElseThrow(AccountService::insufficientFunds);
-            ledger.append(db, account.id(), EntryKind.WITHDRAWAL, amount.negate(), updated.balance(),
+            ledger.append(db, account.id(), EntryKind.WITHDRAWAL, amount.negate(), updated.balance().value(),
                     null, null, now());
             return updated;
         });
@@ -118,14 +118,15 @@ public final class AccountService {
         var debited = accounts.debitIfSufficient(db, from.id(), amount).orElseThrow(AccountService::insufficientFunds);
         var credited = accounts.credit(db, to.id(), amount);
         var at = now();
-        ledger.append(db, from.id(), EntryKind.TRANSFER_OUT, amount.negate(), debited.balance(),
-                to.number(), transferId, at);
-        ledger.append(db, to.id(), EntryKind.TRANSFER_IN, amount, credited.balance(), from.number(), transferId, at);
+        ledger.append(db, from.id(), EntryKind.TRANSFER_OUT, amount.negate(), debited.balance().value(),
+                to.number().value(), transferId, at);
+        ledger.append(db, to.id(), EntryKind.TRANSFER_IN, amount, credited.balance().value(), from.number().value(),
+                transferId, at);
         return new TransferReceipt(transferId, debited, credited);
     }
 
     private static Account find(List<Account> accounts, String number, Supplier<NotFound> missing) {
-        return accounts.stream().filter(a -> a.number().equals(number)).findFirst().orElseThrow(missing);
+        return accounts.stream().filter(a -> a.number().value().equals(number)).findFirst().orElseThrow(missing);
     }
 
     private OffsetDateTime now() {
