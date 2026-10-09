@@ -36,7 +36,7 @@ public final class TestEnvironment implements AutoCloseable {
         var accountRepo = new AccountRepository();
         this.customers = new CustomerService(tx, customerRepo, accountRepo, FIXED_CLOCK);
         this.accounts = new AccountService(tx, customerRepo, accountRepo, new LedgerRepository(),
-                FIXED_CLOCK, UUID::randomUUID, settings.statements());
+                FIXED_CLOCK, UUID::randomUUID, settings.statements(), settings.money().amountPolicy());
     }
 
     public TestEnvironment() {

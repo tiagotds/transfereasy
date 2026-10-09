@@ -4,7 +4,10 @@ import static br.com.tiagotds.transfereasy.support.Money.of;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import br.com.tiagotds.transfereasy.domain.DomainException;
+import br.com.tiagotds.transfereasy.domain.error.Conflict;
+import br.com.tiagotds.transfereasy.domain.error.DomainException;
+import br.com.tiagotds.transfereasy.domain.error.InsufficientFunds;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import br.com.tiagotds.transfereasy.support.TestEnvironment;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -89,7 +92,7 @@ class ConcurrencyTest {
                     env.accounts.withdraw(account, of("30"));
                     succeeded.incrementAndGet();
                 } catch (DomainException e) {
-                    assertEquals(DomainException.Code.INSUFFICIENT_FUNDS, e.code());
+                    assertInstanceOf(InsufficientFunds.class, e);
                     refused.incrementAndGet();
                 }
                 return null;
@@ -116,7 +119,7 @@ class ConcurrencyTest {
                     env.accounts.transfer(source, target, of("40"));
                     succeeded.incrementAndGet();
                 } catch (DomainException e) {
-                    assertEquals(DomainException.Code.INSUFFICIENT_FUNDS, e.code());
+                    assertInstanceOf(InsufficientFunds.class, e);
                 }
                 return null;
             });
@@ -197,7 +200,7 @@ class ConcurrencyTest {
                         env.accounts.transfer(numbers.get(from), numbers.get(to),
                                 BigDecimal.valueOf(1 + random.nextInt(60)));
                     } catch (DomainException e) {
-                        assertEquals(DomainException.Code.INSUFFICIENT_FUNDS, e.code());
+                        assertInstanceOf(InsufficientFunds.class, e);
                     }
                 }
                 return null;
@@ -228,7 +231,7 @@ class ConcurrencyTest {
                             env.accounts.withdraw(account, of("2"));
                         }
                     } catch (DomainException e) {
-                        assertEquals(DomainException.Code.INSUFFICIENT_FUNDS, e.code());
+                        assertInstanceOf(InsufficientFunds.class, e);
                     }
                 }
                 return null;
@@ -256,7 +259,7 @@ class ConcurrencyTest {
                     env.customers.create("same", "Same Person");
                     created.incrementAndGet();
                 } catch (DomainException e) {
-                    assertEquals(DomainException.Code.CONFLICT, e.code());
+                    assertInstanceOf(Conflict.class, e);
                     conflicts.incrementAndGet();
                 }
                 return null;

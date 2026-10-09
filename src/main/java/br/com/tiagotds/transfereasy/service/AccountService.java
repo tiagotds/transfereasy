@@ -2,8 +2,12 @@ package br.com.tiagotds.transfereasy.service;
 
 import br.com.tiagotds.transfereasy.db.TransactionRunner;
 import br.com.tiagotds.transfereasy.domain.Account;
-import br.com.tiagotds.transfereasy.domain.Amounts;
-import br.com.tiagotds.transfereasy.domain.DomainException;
+import br.com.tiagotds.transfereasy.domain.error.InsufficientFunds;
+import br.com.tiagotds.transfereasy.domain.error.InvalidInput;
+import br.com.tiagotds.transfereasy.domain.error.NotFound;
+import br.com.tiagotds.transfereasy.domain.model.AccountNumber;
+import br.com.tiagotds.transfereasy.domain.model.AmountPolicy;
+import br.com.tiagotds.transfereasy.domain.model.TaxNumber;
 import br.com.tiagotds.transfereasy.domain.EntryKind;
 import br.com.tiagotds.transfereasy.domain.Statement;
 import br.com.tiagotds.transfereasy.domain.TransferReceipt;
@@ -15,7 +19,6 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.jooq.DSLContext;
@@ -34,10 +37,11 @@ public final class AccountService {
     private final Clock clock;
     private final Supplier<UUID> ids;
     private final StatementSettings statements;
+    private final AmountPolicy amounts;
 
     public AccountService(TransactionRunner tx, CustomerRepository customers, AccountRepository accounts,
                           LedgerRepository ledger, Clock clock, Supplier<UUID> ids,
-                          StatementSettings statements) {
+                          StatementSettings statements, AmountPolicy amounts) {
         this.tx = tx;
         this.customers = customers;
         this.accounts = accounts;
@@ -45,16 +49,15 @@ public final class AccountService {
         this.clock = clock;
         this.ids = ids;
         this.statements = statements;
+        this.amounts = amounts;
     }
 
     public Account open(String customerTaxNumber) {
-        if (customerTaxNumber == null || customerTaxNumber.isBlank()) {
-            throw DomainException.invalid("Field 'taxNumber' is required.");
-        }
+        var taxNumber = TaxNumber.of(customerTaxNumber);
         return tx.inTransaction(db -> {
-            var customer = customers.findByTaxNumber(db, customerTaxNumber.trim())
-                    .orElseThrow(() -> DomainException.notFound("Customer not found."));
-            return accounts.insert(db, ids.get().toString().replace("-", ""), customer.id(), now());
+            var customer = customers.findByTaxNumber(db, taxNumber.value())
+                    .orElseThrow(NotFound::customer);
+            return accounts.insert(db, AccountNumber.generate(ids.get()).value(), customer.id(), now());
         });
     }
 
@@ -66,7 +69,7 @@ public final class AccountService {
     public Statement statement(String number, Integer requestedSize) {
         int size = requestedSize == null ? statements.defaultSize() : requestedSize;
         if (size < 1 || size > statements.maxSize()) {
-            throw DomainException.invalid("Parameter 'limit' must be between 1 and " + statements.maxSize() + ".");
+            throw new InvalidInput("Parameter 'limit' must be between 1 and " + statements.maxSize() + ".");
         }
         return tx.inReadOnlyTransaction(db -> {
             var account = accounts.findByNumber(db, number).orElseThrow(() -> accountNotFound(number));
@@ -75,7 +78,7 @@ public final class AccountService {
     }
 
     public Account deposit(String number, BigDecimal rawAmount) {
-        var amount = Amounts.requirePositive(rawAmount);
+        var amount = amounts.requireValid(rawAmount).value();
         return tx.inTransaction(db -> {
             var account = accounts.findByNumber(db, number).orElseThrow(() -> accountNotFound(number));
             var updated = accounts.credit(db, account.id(), amount);
@@ -85,7 +88,7 @@ public final class AccountService {
     }
 
     public Account withdraw(String number, BigDecimal rawAmount) {
-        var amount = Amounts.requirePositive(rawAmount);
+        var amount = amounts.requireValid(rawAmount).value();
         return tx.inTransaction(db -> {
             var account = accounts.findByNumber(db, number).orElseThrow(() -> accountNotFound(number));
             var updated = accounts.debitIfSufficient(db, account.id(), amount)
@@ -97,18 +100,16 @@ public final class AccountService {
     }
 
     public TransferReceipt transfer(String fromNumber, String toNumber, BigDecimal rawAmount) {
-        if (toNumber == null || toNumber.isBlank()) {
-            throw DomainException.invalid("Field 'toAccountNumber' is required.");
+        var destination = AccountNumber.of(toNumber, "toAccountNumber").value();
+        if (destination.equals(fromNumber)) {
+            throw new InvalidInput("Origin and destination accounts must be different.");
         }
-        if (Objects.equals(fromNumber, toNumber)) {
-            throw DomainException.invalid("Origin and destination accounts must be different.");
-        }
-        var amount = Amounts.requirePositive(rawAmount);
+        var amount = amounts.requireValid(rawAmount).value();
         var transferId = ids.get().toString();
         return tx.inTransaction(db -> {
-            var locked = accounts.lockByNumbers(db, List.of(fromNumber, toNumber));
+            var locked = accounts.lockByNumbers(db, List.of(fromNumber, destination));
             var from = find(locked, fromNumber, () -> accountNotFound(fromNumber));
-            var to = find(locked, toNumber, () -> DomainException.notFound("Destination account not found."));
+            var to = find(locked, destination, NotFound::destinationAccount);
             return move(db, from, to, amount, transferId);
         });
     }
@@ -123,7 +124,7 @@ public final class AccountService {
         return new TransferReceipt(transferId, debited, credited);
     }
 
-    private static Account find(List<Account> accounts, String number, Supplier<DomainException> missing) {
+    private static Account find(List<Account> accounts, String number, Supplier<NotFound> missing) {
         return accounts.stream().filter(a -> a.number().equals(number)).findFirst().orElseThrow(missing);
     }
 
@@ -131,11 +132,11 @@ public final class AccountService {
         return OffsetDateTime.now(clock);
     }
 
-    private static DomainException accountNotFound(String number) {
-        return DomainException.notFound("Account '" + number + "' not found.");
+    private static NotFound accountNotFound(String number) {
+        return NotFound.account(AccountNumber.of(number));
     }
 
-    private static DomainException insufficientFunds() {
-        return DomainException.insufficientFunds("Insufficient funds for this operation.");
+    private static InsufficientFunds insufficientFunds() {
+        return new InsufficientFunds();
     }
 }
