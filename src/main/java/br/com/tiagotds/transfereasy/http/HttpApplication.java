@@ -1,6 +1,10 @@
 package br.com.tiagotds.transfereasy.http;
 
-import br.com.tiagotds.transfereasy.domain.DomainException;
+import br.com.tiagotds.transfereasy.domain.error.Conflict;
+import br.com.tiagotds.transfereasy.domain.error.DomainException;
+import br.com.tiagotds.transfereasy.domain.error.InsufficientFunds;
+import br.com.tiagotds.transfereasy.domain.error.InvalidInput;
+import br.com.tiagotds.transfereasy.domain.error.NotFound;
 import br.com.tiagotds.transfereasy.infrastructure.config.HttpSettings;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -92,11 +96,11 @@ public final class HttpApplication implements AutoCloseable {
     }
 
     private static Reply fromDomain(DomainException e) {
-        return switch (e.code()) {
-            case INVALID -> error(400, "INVALID_REQUEST", e.getMessage(), Map.of());
-            case NOT_FOUND -> error(404, "NOT_FOUND", e.getMessage(), Map.of());
-            case CONFLICT -> error(409, "CONFLICT", e.getMessage(), Map.of());
-            case INSUFFICIENT_FUNDS -> error(422, "INSUFFICIENT_FUNDS", e.getMessage(), Map.of());
+        return switch (e) {
+            case InvalidInput i -> error(400, "INVALID_REQUEST", i.getMessage(), Map.of());
+            case NotFound n -> error(404, "NOT_FOUND", n.getMessage(), Map.of());
+            case Conflict c -> error(409, "CONFLICT", c.getMessage(), Map.of());
+            case InsufficientFunds f -> error(422, "INSUFFICIENT_FUNDS", f.getMessage(), Map.of());
         };
     }
 

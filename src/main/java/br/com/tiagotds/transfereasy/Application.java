@@ -35,7 +35,7 @@ public final class Application implements AutoCloseable {
             var clock = Clock.systemUTC();
             var customers = new CustomerService(tx, customerRepo, accountRepo, clock);
             var accounts = new AccountService(tx, customerRepo, accountRepo, ledgerRepo, clock, UUID::randomUUID,
-                    settings.statements());
+                    settings.statements(), settings.money().amountPolicy());
             var http = new HttpApplication(settings.http(), new ApiRoutes(customers, accounts).build());
             http.start();
             return new Application(database, http);

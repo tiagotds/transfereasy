@@ -1,6 +1,6 @@
 package br.com.tiagotds.transfereasy.http;
 
-import br.com.tiagotds.transfereasy.domain.DomainException;
+import br.com.tiagotds.transfereasy.domain.error.InvalidInput;
 import br.com.tiagotds.transfereasy.http.Dtos.*;
 import br.com.tiagotds.transfereasy.service.AccountService;
 import br.com.tiagotds.transfereasy.service.CustomerService;
@@ -81,7 +81,7 @@ public final class ApiRoutes {
         try {
             return Json.read(r.body(), type);
         } catch (Json.InvalidJsonException e) {
-            throw DomainException.invalid(e.getMessage());
+            throw new InvalidInput(e.getMessage());
         }
     }
 
@@ -93,7 +93,7 @@ public final class ApiRoutes {
         try {
             return Integer.valueOf(raw);
         } catch (NumberFormatException e) {
-            throw DomainException.invalid("Parameter '" + name + "' must be an integer.");
+            throw new InvalidInput("Parameter '" + name + "' must be an integer.");
         }
     }
 }

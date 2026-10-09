@@ -5,8 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import br.com.tiagotds.transfereasy.domain.DomainException;
-import br.com.tiagotds.transfereasy.domain.DomainException.Code;
+import br.com.tiagotds.transfereasy.domain.error.Conflict;
+import br.com.tiagotds.transfereasy.domain.error.DomainException;
+import br.com.tiagotds.transfereasy.domain.error.InsufficientFunds;
+import br.com.tiagotds.transfereasy.domain.error.InvalidInput;
+import br.com.tiagotds.transfereasy.domain.error.NotFound;
 import br.com.tiagotds.transfereasy.domain.EntryKind;
 import br.com.tiagotds.transfereasy.support.TestEnvironment;
 import java.math.BigDecimal;
@@ -29,8 +32,8 @@ class AccountServiceTest {
         env.close();
     }
 
-    private static Code codeOf(Runnable action) {
-        return assertThrows(DomainException.class, action::run).code();
+    private static Class<? extends DomainException> codeOf(Runnable action) {
+        return assertThrows(DomainException.class, action::run).getClass();
     }
 
     @Nested
@@ -48,13 +51,13 @@ class AccountServiceTest {
 
         @Test
         void opening_an_account_for_an_unknown_customer_is_not_found() {
-            assertEquals(Code.NOT_FOUND, codeOf(() -> env.accounts.open("missing")));
+            assertEquals(NotFound.class, codeOf(() -> env.accounts.open("missing")));
         }
 
         @Test
         void opening_an_account_without_tax_number_is_invalid() {
-            assertEquals(Code.INVALID, codeOf(() -> env.accounts.open(" ")));
-            assertEquals(Code.INVALID, codeOf(() -> env.accounts.open(null)));
+            assertEquals(InvalidInput.class, codeOf(() -> env.accounts.open(" ")));
+            assertEquals(InvalidInput.class, codeOf(() -> env.accounts.open(null)));
         }
 
         @Test
@@ -86,7 +89,7 @@ class AccountServiceTest {
 
         @Test
         void a_deposit_into_an_unknown_account_is_not_found() {
-            assertEquals(Code.NOT_FOUND, codeOf(() -> env.accounts.deposit("nope", of("1"))));
+            assertEquals(NotFound.class, codeOf(() -> env.accounts.deposit("nope", of("1"))));
         }
 
         @Test
@@ -95,7 +98,7 @@ class AccountServiceTest {
 
             for (var bad : new BigDecimal[]{null, BigDecimal.ZERO, new BigDecimal("-1"),
                     new BigDecimal("0.001"), new BigDecimal("1000000000000.01")}) {
-                assertEquals(Code.INVALID, codeOf(() -> env.accounts.deposit(number, bad)), "amount " + bad);
+                assertEquals(InvalidInput.class, codeOf(() -> env.accounts.deposit(number, bad)), "amount " + bad);
             }
             assertEquals(of("10"), env.balanceOf(number));
             assertEquals(1, env.accounts.statement(number, null).entries().size());
@@ -137,7 +140,7 @@ class AccountServiceTest {
         void withdrawing_more_than_the_balance_is_refused_and_changes_nothing() {
             var number = env.accountWithBalance("111", "100");
 
-            assertEquals(Code.INSUFFICIENT_FUNDS, codeOf(() -> env.accounts.withdraw(number, of("100.01"))));
+            assertEquals(InsufficientFunds.class, codeOf(() -> env.accounts.withdraw(number, of("100.01"))));
 
             assertEquals(of("100"), env.balanceOf(number));
             assertEquals(1, env.accounts.statement(number, null).entries().size());
@@ -145,7 +148,7 @@ class AccountServiceTest {
 
         @Test
         void withdrawing_from_an_unknown_account_is_not_found() {
-            assertEquals(Code.NOT_FOUND, codeOf(() -> env.accounts.withdraw("nope", of("1"))));
+            assertEquals(NotFound.class, codeOf(() -> env.accounts.withdraw("nope", of("1"))));
         }
     }
 
@@ -176,7 +179,7 @@ class AccountServiceTest {
             var from = env.accountWithBalance("111", "10");
             var to = env.accountWithBalance("222", "0");
 
-            assertEquals(Code.INSUFFICIENT_FUNDS, codeOf(() -> env.accounts.transfer(from, to, of("10.01"))));
+            assertEquals(InsufficientFunds.class, codeOf(() -> env.accounts.transfer(from, to, of("10.01"))));
 
             assertEquals(of("10"), env.balanceOf(from));
             assertEquals(of("0"), env.balanceOf(to));
@@ -187,7 +190,7 @@ class AccountServiceTest {
         void a_transfer_to_an_unknown_destination_changes_nothing() {
             var from = env.accountWithBalance("111", "10");
 
-            assertEquals(Code.NOT_FOUND, codeOf(() -> env.accounts.transfer(from, "ghost", of("1"))));
+            assertEquals(NotFound.class, codeOf(() -> env.accounts.transfer(from, "ghost", of("1"))));
 
             assertEquals(of("10"), env.balanceOf(from));
         }
@@ -196,22 +199,22 @@ class AccountServiceTest {
         void a_transfer_from_an_unknown_origin_is_not_found() {
             var to = env.accountWithBalance("222", "0");
 
-            assertEquals(Code.NOT_FOUND, codeOf(() -> env.accounts.transfer("ghost", to, of("1"))));
+            assertEquals(NotFound.class, codeOf(() -> env.accounts.transfer("ghost", to, of("1"))));
         }
 
         @Test
         void transferring_to_the_same_account_is_invalid() {
             var number = env.accountWithBalance("111", "10");
 
-            assertEquals(Code.INVALID, codeOf(() -> env.accounts.transfer(number, number, of("1"))));
+            assertEquals(InvalidInput.class, codeOf(() -> env.accounts.transfer(number, number, of("1"))));
         }
 
         @Test
         void a_missing_destination_is_invalid() {
             var number = env.accountWithBalance("111", "10");
 
-            assertEquals(Code.INVALID, codeOf(() -> env.accounts.transfer(number, null, of("1"))));
-            assertEquals(Code.INVALID, codeOf(() -> env.accounts.transfer(number, " ", of("1"))));
+            assertEquals(InvalidInput.class, codeOf(() -> env.accounts.transfer(number, null, of("1"))));
+            assertEquals(InvalidInput.class, codeOf(() -> env.accounts.transfer(number, " ", of("1"))));
         }
 
         @Test
@@ -219,7 +222,7 @@ class AccountServiceTest {
             var from = env.accountWithBalance("111", "10");
             var to = env.accountWithBalance("222", "0");
 
-            assertEquals(Code.INVALID, codeOf(() -> env.accounts.transfer(from, to, of("0"))));
+            assertEquals(InvalidInput.class, codeOf(() -> env.accounts.transfer(from, to, of("0"))));
         }
     }
 
@@ -256,18 +259,18 @@ class AccountServiceTest {
         void an_out_of_range_limit_is_invalid() {
             var number = env.accountWithBalance("111", "0");
 
-            assertEquals(Code.INVALID, codeOf(() -> env.accounts.statement(number, 0)));
-            assertEquals(Code.INVALID, codeOf(() -> env.accounts.statement(number, 1001)));
+            assertEquals(InvalidInput.class, codeOf(() -> env.accounts.statement(number, 0)));
+            assertEquals(InvalidInput.class, codeOf(() -> env.accounts.statement(number, 1001)));
         }
 
         @Test
         void a_statement_for_an_unknown_account_is_not_found() {
-            assertEquals(Code.NOT_FOUND, codeOf(() -> env.accounts.statement("ghost", null)));
+            assertEquals(NotFound.class, codeOf(() -> env.accounts.statement("ghost", null)));
         }
 
         @Test
         void getting_an_unknown_account_is_not_found() {
-            assertEquals(Code.NOT_FOUND, codeOf(() -> env.accounts.get("ghost")));
+            assertEquals(NotFound.class, codeOf(() -> env.accounts.get("ghost")));
         }
     }
 }

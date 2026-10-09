@@ -3,7 +3,10 @@ package br.com.tiagotds.transfereasy.service;
 import br.com.tiagotds.transfereasy.db.TransactionRunner;
 import br.com.tiagotds.transfereasy.domain.Account;
 import br.com.tiagotds.transfereasy.domain.Customer;
-import br.com.tiagotds.transfereasy.domain.DomainException;
+import br.com.tiagotds.transfereasy.domain.error.Conflict;
+import br.com.tiagotds.transfereasy.domain.error.NotFound;
+import br.com.tiagotds.transfereasy.domain.model.CustomerName;
+import br.com.tiagotds.transfereasy.domain.model.TaxNumber;
 import br.com.tiagotds.transfereasy.repository.AccountRepository;
 import br.com.tiagotds.transfereasy.repository.CustomerRepository;
 import java.time.Clock;
@@ -12,9 +15,6 @@ import java.util.List;
 import org.jooq.exception.IntegrityConstraintViolationException;
 
 public final class CustomerService {
-
-    static final int MAX_NAME = 120;
-    static final int MAX_TAX_NUMBER = 32;
 
     private final TransactionRunner tx;
     private final CustomerRepository customers;
@@ -30,19 +30,20 @@ public final class CustomerService {
     }
 
     public Customer create(String taxNumber, String name) {
-        var cleanTax = requireText(taxNumber, "taxNumber", MAX_TAX_NUMBER);
-        var cleanName = requireText(name, "name", MAX_NAME);
+        var cleanTax = TaxNumber.of(taxNumber);
+        var cleanName = CustomerName.of(name);
         try {
-            return tx.inTransaction(db -> customers.insert(db, cleanTax, cleanName, OffsetDateTime.now(clock)));
+            return tx.inTransaction(db -> customers.insert(db, cleanTax.value(), cleanName.value(),
+                    OffsetDateTime.now(clock)));
         } catch (IntegrityConstraintViolationException e) {
             // the UNIQUE constraint is the arbiter, so two concurrent creations can never both succeed
-            throw DomainException.conflict("A customer with tax number '" + cleanTax + "' already exists.");
+            throw Conflict.duplicateCustomer(cleanTax);
         }
     }
 
     public Customer get(String taxNumber) {
         return tx.inReadOnlyTransaction(db -> customers.findByTaxNumber(db, taxNumber))
-                .orElseThrow(() -> DomainException.notFound("Customer not found."));
+                .orElseThrow(NotFound::customer);
     }
 
     public List<Customer> search(String nameFragment) {
@@ -52,19 +53,8 @@ public final class CustomerService {
     public List<Account> accountsOf(String taxNumber) {
         return tx.inReadOnlyTransaction(db -> {
             var customer = customers.findByTaxNumber(db, taxNumber)
-                    .orElseThrow(() -> DomainException.notFound("Customer not found."));
+                    .orElseThrow(NotFound::customer);
             return accounts.findByCustomer(db, customer.id());
         });
-    }
-
-    private static String requireText(String value, String field, int max) {
-        if (value == null || value.isBlank()) {
-            throw DomainException.invalid("Field '" + field + "' is required.");
-        }
-        var trimmed = value.trim();
-        if (trimmed.length() > max) {
-            throw DomainException.invalid("Field '" + field + "' must have at most " + max + " characters.");
-        }
-        return trimmed;
     }
 }
