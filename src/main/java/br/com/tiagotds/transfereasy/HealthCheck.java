@@ -12,7 +12,7 @@ public final class HealthCheck {
     }
 
     public static void main(String[] args) throws Exception {
-        var port = System.getenv().getOrDefault("PORT", "8080");
+        var port = System.getenv().getOrDefault("HTTP_PORT", "8080");
         var request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/health")).build();
         var status = HttpClient.newHttpClient().send(request, BodyHandlers.discarding()).statusCode();
         System.exit(status == 200 ? 0 : 1);

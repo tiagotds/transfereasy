@@ -1,6 +1,7 @@
 package br.com.tiagotds.transfereasy;
 
-import br.com.tiagotds.transfereasy.config.AppConfig;
+import br.com.tiagotds.transfereasy.infrastructure.config.Config;
+import br.com.tiagotds.transfereasy.infrastructure.config.Settings;
 import java.util.logging.Logger;
 
 public final class Main {
@@ -11,7 +12,7 @@ public final class Main {
     }
 
     public static void main(String[] args) throws Exception {
-        var app = Application.start(AppConfig.fromEnvironment(System.getenv()));
+        var app = Application.start(Settings.from(Config.fromEnvironment()));
         Runtime.getRuntime().addShutdownHook(new Thread(app::close, "shutdown"));
         LOG.info("transfereasy listening on port " + app.port());
         Thread.currentThread().join();

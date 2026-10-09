@@ -1,5 +1,6 @@
 package br.com.tiagotds.transfereasy.db;
 
+import br.com.tiagotds.transfereasy.infrastructure.config.DatabaseSettings;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -20,13 +21,12 @@ public final class Database implements AutoCloseable {
     }
 
     /**
-     * @param name     in-memory database name; use a unique one per instance to get full isolation
-     * @param poolSize maximum number of simultaneously open connections
+     * @param name in-memory database name; use a unique one per instance to get full isolation
      */
-    public static Database startInMemory(String name, int poolSize) {
-        var url = "jdbc:h2:mem:" + name + ";DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000";
+    public static Database startInMemory(String name, DatabaseSettings settings) {
+        var url = "jdbc:h2:mem:" + name + ";DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=" + settings.lockTimeout().toMillis();
         var pool = JdbcConnectionPool.create(url, "sa", "");
-        pool.setMaxConnections(poolSize);
+        pool.setMaxConnections(settings.poolSize());
         var database = new Database(pool);
         try {
             database.applySchema();

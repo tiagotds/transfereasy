@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import br.com.tiagotds.transfereasy.infrastructure.config.Config;
+import br.com.tiagotds.transfereasy.infrastructure.config.Settings;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -27,7 +29,8 @@ class TransactionRunnerTest {
 
     @BeforeEach
     void setUp() {
-        database = Database.startInMemory("tx-" + UUID.randomUUID(), 1);
+        database = Database.startInMemory("tx-" + UUID.randomUUID(),
+                Settings.from(Config.defaults().with("db.pool-size", "1")).database());
         runner = new TransactionRunner(database);
     }
 

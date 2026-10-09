@@ -5,7 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.tiagotds.transfereasy.Application;
-import br.com.tiagotds.transfereasy.config.AppConfig;
+import br.com.tiagotds.transfereasy.infrastructure.config.Config;
+import br.com.tiagotds.transfereasy.infrastructure.config.Settings;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -35,7 +36,7 @@ class ApiTest {
 
     @BeforeAll
     static void start() throws Exception {
-        app = Application.start(new AppConfig(0, 32));
+        app = Application.start(Settings.from(Config.defaults().with("http.port", "0")));
         client = HttpClient.newHttpClient();
         base = "http://localhost:" + app.port();
     }
