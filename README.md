@@ -1,4 +1,6 @@
-# transfereasy 3
+# transfereasy
+
+[![Java CI with Gradle](https://github.com/tiagotds/transfereasy/actions/workflows/gradle.yml/badge.svg?branch=master)](https://github.com/tiagotds/transfereasy/actions/workflows/gradle.yml)
 
 A small banking REST API: customers, accounts, deposits, withdrawals, transfers and statements. It is built on plain Java 21, with no framework, and its design centres on **correctness under concurrency**.
 
