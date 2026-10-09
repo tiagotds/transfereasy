@@ -2,12 +2,8 @@ package br.com.tiagotds.transfereasy.application.handler;
 
 import br.com.tiagotds.transfereasy.application.command.TransferMoney;
 import br.com.tiagotds.transfereasy.domain.error.NotFound;
-import br.com.tiagotds.transfereasy.domain.model.AmountPolicy;
 import br.com.tiagotds.transfereasy.domain.model.Transfer;
 import br.com.tiagotds.transfereasy.domain.model.TransferReceipt;
-import br.com.tiagotds.transfereasy.domain.port.AccountRepository;
-import br.com.tiagotds.transfereasy.domain.port.LedgerRepository;
-import java.time.Clock;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -16,9 +12,8 @@ public final class TransferHandler extends MoneyMovementHandler<TransferMoney, T
 
     private final Supplier<UUID> ids;
 
-    public TransferHandler(AccountRepository accounts, LedgerRepository ledger, AmountPolicy amounts, Clock clock,
-                           Supplier<UUID> ids) {
-        super(accounts, ledger, amounts, clock);
+    public TransferHandler(MovementDependencies deps, Supplier<UUID> ids) {
+        super(deps);
         this.ids = ids;
     }
 

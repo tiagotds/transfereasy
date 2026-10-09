@@ -12,6 +12,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.jooq.Condition;
 
 public final class JooqAccountRepository extends JooqRepository<AccountsRecord, Account>
         implements AccountRepository {
@@ -41,12 +42,18 @@ public final class JooqAccountRepository extends JooqRepository<AccountsRecord, 
     }
 
     @Override
+    public List<Account> findAll(Collection<AccountNumber> numbers) {
+        return findAll(numberIn(numbers), ACCOUNTS.ID);
+    }
+
+    @Override
     public List<Account> lockAll(Collection<AccountNumber> numbers) {
-        return db().selectFrom(ACCOUNTS)
-                .where(ACCOUNTS.ACCOUNT_NUMBER.in(numbers.stream().map(AccountNumber::value).toList()))
-                .orderBy(ACCOUNTS.ID)
-                .forUpdate()
+        return db().selectFrom(ACCOUNTS).where(numberIn(numbers)).orderBy(ACCOUNTS.ID).forUpdate()
                 .fetch(this::toDomain);
+    }
+
+    private static Condition numberIn(Collection<AccountNumber> numbers) {
+        return ACCOUNTS.ACCOUNT_NUMBER.in(numbers.stream().map(AccountNumber::value).toList());
     }
 
     @Override

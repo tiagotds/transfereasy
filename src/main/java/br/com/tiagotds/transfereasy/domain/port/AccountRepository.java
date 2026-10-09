@@ -16,6 +16,9 @@ public interface AccountRepository {
 
     List<Account> findByCustomer(long customerId);
 
+    /** The existing accounts among {@code numbers}, without locking, in ascending id order. */
+    List<Account> findAll(Collection<AccountNumber> numbers);
+
     /**
      * Row-locks the existing accounts among {@code numbers} until the transaction ends and returns them in
      * ascending id order. Locking in one global order is what keeps opposite transfers deadlock-free.

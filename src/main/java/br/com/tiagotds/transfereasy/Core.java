@@ -7,6 +7,7 @@ import br.com.tiagotds.transfereasy.application.command.TransferMoney;
 import br.com.tiagotds.transfereasy.application.command.WithdrawMoney;
 import br.com.tiagotds.transfereasy.application.handler.CreateCustomerHandler;
 import br.com.tiagotds.transfereasy.application.handler.DepositHandler;
+import br.com.tiagotds.transfereasy.application.handler.MovementDependencies;
 import br.com.tiagotds.transfereasy.application.handler.OpenAccountHandler;
 import br.com.tiagotds.transfereasy.application.handler.TransferHandler;
 import br.com.tiagotds.transfereasy.application.handler.WithdrawHandler;
@@ -31,16 +32,17 @@ public record Core(CommandBus commands, AccountQueries accounts, CustomerQueries
         var customerRepository = new JooqCustomerRepository();
         var accountRepository = new JooqAccountRepository();
         var ledger = new JooqLedgerRepository();
-        var amounts = settings.money().amountPolicy();
+        var movements = new MovementDependencies(accountRepository, ledger, settings.money().amountPolicy(),
+                settings.locking(), clock);
 
         var commands = CommandBus.builder()
                 .use(RetryMiddleware.withJitter(settings.retry()))
                 .use(new TransactionMiddleware(tx))
                 .handle(CreateCustomer.class, new CreateCustomerHandler(customerRepository, clock))
                 .handle(OpenAccount.class, new OpenAccountHandler(customerRepository, accountRepository, clock, ids))
-                .handle(DepositMoney.class, new DepositHandler(accountRepository, ledger, amounts, clock))
-                .handle(WithdrawMoney.class, new WithdrawHandler(accountRepository, ledger, amounts, clock))
-                .handle(TransferMoney.class, new TransferHandler(accountRepository, ledger, amounts, clock, ids))
+                .handle(DepositMoney.class, new DepositHandler(movements))
+                .handle(WithdrawMoney.class, new WithdrawHandler(movements))
+                .handle(TransferMoney.class, new TransferHandler(movements, ids))
                 .build();
         return new Core(commands,
                 new AccountQueries(tx, accountRepository, ledger, settings.statements()),
