@@ -17,11 +17,19 @@ class SettingsTest {
         assertEquals(new DatabaseSettings(32, Duration.ofSeconds(10)), settings.database());
         assertEquals(new StatementSettings(100, 1000), settings.statements());
         assertEquals(Money.of("1000000000000"), settings.money().maxAmount());
+        assertEquals(new RetrySettings(10, Duration.ofMillis(2), Duration.ofMillis(100)), settings.retry());
     }
 
     @Test
     void a_default_statement_size_above_the_maximum_is_rejected() {
         var config = Config.defaults().with("statement.default-size", "2000");
+
+        assertThrows(IllegalArgumentException.class, () -> Settings.from(config));
+    }
+
+    @Test
+    void retry_backoff_must_not_start_above_its_cap() {
+        var config = Config.defaults().with("retry.initial-backoff", "1s").with("retry.max-backoff", "10ms");
 
         assertThrows(IllegalArgumentException.class, () -> Settings.from(config));
     }

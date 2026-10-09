@@ -96,10 +96,11 @@ Application      composition root (hand wiring, chosen strategy from config)
    - Generic `JsonRoute<Req,Res>` removes the per-route body/parse boilerplate in `ApiRoutes`.
    - `ErrorMapper` switches over the sealed exceptions.
    - Header access (`Idempotency-Key`).
-9. **concurrency: pluggable `LockingStrategy`.** `ConcurrencyTest` becomes `@ParameterizedTest @EnumSource(LockingStrategy)`, with the same invariants for both strategies: no overdraft, conservation of money, ledger = balances, no deadlock.
-10. **concurrency: retry with backoff and jitter.**
+9. **concurrency: retry with backoff and jitter.**
     - Unit tests with a fake `Sleeper`: attempts, delays, only transient failures retried, exhaustion → 409.
-    - Concurrency test with `OPTIMISTIC` and `max-attempts=1` proving conflicts surface and nothing partial persists.
+    - Integration test with a real transaction: failed attempts roll back, only the successful one commits.
+10. **concurrency: pluggable `LockingStrategy`.** `ConcurrencyTest` becomes `@ParameterizedTest @EnumSource(LockingStrategy)`, with the same invariants for both strategies: no overdraft, conservation of money, ledger = balances, no deadlock.
+    - Delivered after retry (order swapped while implementing): OPTIMISTIC relies on retry to absorb conflicts.
 11. **concurrency: Idempotency-Key.**
     - Tests: replay, fingerprint mismatch, and 32 threads with the same key → exactly one movement and identical responses, for both strategies.
 12. **concurrency: bulkhead.**
