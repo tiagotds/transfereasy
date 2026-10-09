@@ -17,11 +17,19 @@ class DomainExceptionTest {
                 Conflict.duplicateCustomer(TaxNumber.of("1")).getMessage());
         assertEquals("Insufficient funds for this operation.", new InsufficientFunds().getMessage());
         assertEquals("bad", new InvalidInput("bad").getMessage());
+        assertEquals("Account 'abc' was modified concurrently, please retry.",
+                ConcurrentModification.of(AccountNumber.of("abc")).getMessage());
     }
 
     @Test
     void business_outcomes_are_cheap_to_throw_because_they_carry_no_stack_trace() {
         assertEquals(0, new InsufficientFunds().getStackTrace().length);
+    }
+
+    @Test
+    void only_concurrent_modifications_are_retryable() {
+        assertEquals(true, ConcurrentModification.of(AccountNumber.of("a")) instanceof Retryable);
+        assertEquals(false, (Object) new InsufficientFunds() instanceof Retryable);
     }
 
     @Test
@@ -32,6 +40,7 @@ class DomainExceptionTest {
             case NotFound n -> "not found";
             case Conflict c -> "conflict";
             case InsufficientFunds f -> "funds";
+            case ConcurrentModification m -> "concurrent";
         };
         assertEquals("funds", name);
     }

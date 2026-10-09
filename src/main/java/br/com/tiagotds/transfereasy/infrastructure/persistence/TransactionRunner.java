@@ -1,8 +1,8 @@
-package br.com.tiagotds.transfereasy.db;
+package br.com.tiagotds.transfereasy.infrastructure.persistence;
 
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.function.Function;
+import java.util.function.Supplier;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.conf.Settings;
@@ -13,6 +13,10 @@ import org.jooq.impl.DSL;
  *
  * <p>Guarantee: whatever the work throws (checked, unchecked or {@link Error}), the transaction is
  * rolled back and the connection returned to the pool. Callers never manage transactions themselves.
+ *
+ * <p>While the work runs, its transaction is bound to the current thread and reachable through {@link #current()};
+ * repositories use it, so they can never open, commit or leak a transaction of their own. Nesting is refused:
+ * one business operation is always exactly one transaction.
  */
 public final class TransactionRunner {
 
@@ -23,6 +27,8 @@ public final class TransactionRunner {
     public interface ConnectionSource {
         Connection get() throws SQLException;
     }
+
+    private static final ThreadLocal<DSLContext> CURRENT = new ThreadLocal<>();
 
     private final ConnectionSource connections;
 
@@ -35,26 +41,40 @@ public final class TransactionRunner {
     }
 
     /** Read-committed read/write transaction. Writers rely on row locks and atomic conditional updates. */
-    public <T> T inTransaction(Function<DSLContext, T> work) {
+    public <T> T inTransaction(Supplier<T> work) {
         return run(work, Connection.TRANSACTION_READ_COMMITTED, false);
     }
 
     /** Snapshot (repeatable-read) read-only transaction: multiple queries see one consistent state. */
-    public <T> T inReadOnlyTransaction(Function<DSLContext, T> work) {
+    public <T> T inReadOnlyTransaction(Supplier<T> work) {
         return run(work, Connection.TRANSACTION_REPEATABLE_READ, true);
     }
 
-    private <T> T run(Function<DSLContext, T> work, int isolation, boolean readOnly) {
+    /** @throws IllegalStateException when called outside {@link #inTransaction} / {@link #inReadOnlyTransaction} */
+    public static DSLContext current() {
+        var db = CURRENT.get();
+        if (db == null) {
+            throw new IllegalStateException("No active transaction on this thread");
+        }
+        return db;
+    }
+
+    private <T> T run(Supplier<T> work, int isolation, boolean readOnly) {
+        if (CURRENT.get() != null) {
+            throw new IllegalStateException("A transaction is already active on this thread");
+        }
         Connection connection = open();
         try {
             begin(connection, isolation, readOnly);
-            T result = work.apply(DSL.using(connection, SQLDialect.H2, SETTINGS));
+            CURRENT.set(DSL.using(connection, SQLDialect.H2, SETTINGS));
+            T result = work.get();
             commit(connection);
             return result;
         } catch (Throwable failure) {
             rollbackQuietly(connection, failure);
             throw failure;
         } finally {
+            CURRENT.remove();
             releaseQuietly(connection);
         }
     }

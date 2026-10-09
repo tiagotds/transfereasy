@@ -1,12 +1,12 @@
 package br.com.tiagotds.transfereasy.support;
 
-import br.com.tiagotds.transfereasy.db.Database;
-import br.com.tiagotds.transfereasy.db.TransactionRunner;
+import br.com.tiagotds.transfereasy.infrastructure.persistence.Database;
+import br.com.tiagotds.transfereasy.infrastructure.persistence.TransactionRunner;
 import br.com.tiagotds.transfereasy.infrastructure.config.Config;
 import br.com.tiagotds.transfereasy.infrastructure.config.Settings;
-import br.com.tiagotds.transfereasy.repository.AccountRepository;
-import br.com.tiagotds.transfereasy.repository.CustomerRepository;
-import br.com.tiagotds.transfereasy.repository.LedgerRepository;
+import br.com.tiagotds.transfereasy.infrastructure.persistence.JooqAccountRepository;
+import br.com.tiagotds.transfereasy.infrastructure.persistence.JooqCustomerRepository;
+import br.com.tiagotds.transfereasy.infrastructure.persistence.JooqLedgerRepository;
 import br.com.tiagotds.transfereasy.service.AccountService;
 import br.com.tiagotds.transfereasy.service.CustomerService;
 import java.math.BigDecimal;
@@ -32,10 +32,10 @@ public final class TestEnvironment implements AutoCloseable {
         var settings = Settings.from(Config.defaults().with("db.pool-size", String.valueOf(poolSize)));
         this.database = Database.startInMemory("test-" + UUID.randomUUID(), settings.database());
         this.tx = new TransactionRunner(database);
-        var customerRepo = new CustomerRepository();
-        var accountRepo = new AccountRepository();
+        var customerRepo = new JooqCustomerRepository();
+        var accountRepo = new JooqAccountRepository();
         this.customers = new CustomerService(tx, customerRepo, accountRepo, FIXED_CLOCK);
-        this.accounts = new AccountService(tx, customerRepo, accountRepo, new LedgerRepository(),
+        this.accounts = new AccountService(tx, customerRepo, accountRepo, new JooqLedgerRepository(),
                 FIXED_CLOCK, UUID::randomUUID, settings.statements(), settings.money().amountPolicy());
     }
 
@@ -58,13 +58,13 @@ public final class TestEnvironment implements AutoCloseable {
     }
 
     public BigDecimal totalOfAllBalances() {
-        return tx.inReadOnlyTransaction(db -> db.select(org.jooq.impl.DSL.coalesce(
+        return tx.inReadOnlyTransaction(() -> TransactionRunner.current().select(org.jooq.impl.DSL.coalesce(
                         org.jooq.impl.DSL.sum(ACCOUNTS.BALANCE), BigDecimal.ZERO)).from(ACCOUNTS).fetchSingle().value1());
     }
 
     /** Sum of every ledger line: must always equal {@link #totalOfAllBalances()} (double-entry invariant). */
     public BigDecimal totalOfAllLedgerEntries() {
-        return tx.inReadOnlyTransaction(db -> db.select(org.jooq.impl.DSL.coalesce(
+        return tx.inReadOnlyTransaction(() -> TransactionRunner.current().select(org.jooq.impl.DSL.coalesce(
                         org.jooq.impl.DSL.sum(LEDGER_ENTRIES.AMOUNT), BigDecimal.ZERO)).from(LEDGER_ENTRIES)
                 .fetchSingle().value1());
     }
