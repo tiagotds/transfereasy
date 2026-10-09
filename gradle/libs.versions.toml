@@ -1,0 +1,16 @@
+[versions]
+jooq = "3.20.5"
+h2 = "2.3.232"
+jackson = "2.19.2"
+junit = "5.13.4"
+jacoco = "0.8.14"
+
+[libraries]
+jooq = { module = "org.jooq:jooq", version.ref = "jooq" }
+jooq-meta-extensions = { module = "org.jooq:jooq-meta-extensions", version.ref = "jooq" }
+h2 = { module = "com.h2database:h2", version.ref = "h2" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+jackson-jsr310 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310", version.ref = "jackson" }
+
+[plugins]
+jooq-codegen = { id = "org.jooq.jooq-codegen-gradle", version.ref = "jooq" }
