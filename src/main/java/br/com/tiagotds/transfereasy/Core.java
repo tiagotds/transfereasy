@@ -11,6 +11,7 @@ import br.com.tiagotds.transfereasy.application.handler.OpenAccountHandler;
 import br.com.tiagotds.transfereasy.application.handler.TransferHandler;
 import br.com.tiagotds.transfereasy.application.handler.WithdrawHandler;
 import br.com.tiagotds.transfereasy.application.pipeline.CommandBus;
+import br.com.tiagotds.transfereasy.application.pipeline.RetryMiddleware;
 import br.com.tiagotds.transfereasy.application.pipeline.TransactionMiddleware;
 import br.com.tiagotds.transfereasy.application.query.AccountQueries;
 import br.com.tiagotds.transfereasy.application.query.CustomerQueries;
@@ -33,6 +34,7 @@ public record Core(CommandBus commands, AccountQueries accounts, CustomerQueries
         var amounts = settings.money().amountPolicy();
 
         var commands = CommandBus.builder()
+                .use(RetryMiddleware.withJitter(settings.retry()))
                 .use(new TransactionMiddleware(tx))
                 .handle(CreateCustomer.class, new CreateCustomerHandler(customerRepository, clock))
                 .handle(OpenAccount.class, new OpenAccountHandler(customerRepository, accountRepository, clock, ids))
