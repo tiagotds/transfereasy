@@ -14,7 +14,8 @@ class SettingsTest {
     void defaults_reproduce_the_previous_hard_coded_values() {
         var settings = Settings.from(Config.defaults());
 
-        assertEquals(new HttpSettings(8080, 64 * 1024), settings.http());
+        assertEquals(new HttpSettings(8080, 64 * 1024, 64, Duration.ofMillis(200), Duration.ofSeconds(1)),
+                settings.http());
         assertEquals(new DatabaseSettings(32, Duration.ofSeconds(10)), settings.database());
         assertEquals(new StatementSettings(100, 1000), settings.statements());
         assertEquals(Money.of("1000000000000"), settings.money().maxAmount());

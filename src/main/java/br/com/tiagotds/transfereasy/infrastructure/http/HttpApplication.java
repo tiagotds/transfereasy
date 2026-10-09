@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
@@ -17,14 +18,19 @@ import java.util.logging.Logger;
 public final class HttpApplication implements AutoCloseable {
 
     private static final Logger LOG = Logger.getLogger(HttpApplication.class.getName());
+    private static final String HEALTH = "/health";
 
     private final HttpServer server;
     private final Router router;
     private final int maxBodyBytes;
+    private final Bulkhead bulkhead;
+    private final Duration retryAfter;
 
     public HttpApplication(HttpSettings settings, Router router) throws IOException {
         this.router = router;
         this.maxBodyBytes = settings.maxBodyBytes();
+        this.bulkhead = new Bulkhead(settings.maxInFlight(), settings.acquireTimeout());
+        this.retryAfter = settings.retryAfter();
         this.server = HttpServer.create(new InetSocketAddress(settings.port()), 0);
         this.server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         this.server.createContext("/", this::handle);
@@ -56,26 +62,36 @@ public final class HttpApplication implements AutoCloseable {
         }
     }
 
+    /** Health checks bypass the bulkhead: an overloaded instance is still alive and must not be restarted. */
     private HttpResponse dispatch(HttpExchange exchange) {
         try {
-            var method = exchange.getRequestMethod();
-            var uri = exchange.getRequestURI();
-            return switch (router.match(method, uri.getPath())) {
-                case Router.Match.NotFound ignored -> ErrorMapper.noRoute();
-                case Router.Match.MethodNotAllowed m -> ErrorMapper.methodNotAllowed(m.allowed());
-                case Router.Match.Found found -> {
-                    var body = readBody(exchange);
-                    if (body == null) {
-                        yield ErrorMapper.payloadTooLarge();
-                    }
-                    yield found.handler().handle(new HttpRequest(method, uri.getPath(), parseQuery(uri.getRawQuery()),
-                            body, found.params(), headers(exchange)));
-                }
-            };
+            if (HEALTH.equals(exchange.getRequestURI().getPath())) {
+                return route(exchange);
+            }
+            return bulkhead.call(() -> route(exchange));
+        } catch (Bulkhead.Overloaded e) {
+            return ErrorMapper.overloaded(retryAfter);
         } catch (Throwable t) {
             // Includes Errors: a request must always get an answer and must never leak internals.
             return ErrorMapper.toResponse(t);
         }
+    }
+
+    private HttpResponse route(HttpExchange exchange) throws IOException {
+        var method = exchange.getRequestMethod();
+        var uri = exchange.getRequestURI();
+        return switch (router.match(method, uri.getPath())) {
+            case Router.Match.NotFound ignored -> ErrorMapper.noRoute();
+            case Router.Match.MethodNotAllowed m -> ErrorMapper.methodNotAllowed(m.allowed());
+            case Router.Match.Found found -> {
+                var body = readBody(exchange);
+                if (body == null) {
+                    yield ErrorMapper.payloadTooLarge();
+                }
+                yield found.handler().handle(new HttpRequest(method, uri.getPath(), parseQuery(uri.getRawQuery()),
+                        body, found.params(), headers(exchange)));
+            }
+        };
     }
 
     /** @return the body bytes, or {@code null} when the limit is exceeded. */
