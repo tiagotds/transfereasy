@@ -62,7 +62,10 @@ tasks.named('jooqCodegen') {
     inputs.file('src/main/resources/db/schema.sql')
 }
 
-sourceSets.main.java.srcDir(tasks.named('jooqCodegen'))
+sourceSets.main.java.srcDir(layout.buildDirectory.dir('generated-sources/jooq'))
+tasks.named('compileJava') {
+    dependsOn tasks.named('jooqCodegen')
+}
 
 testing {
     suites {
@@ -146,4 +149,12 @@ jacocoTestCoverageVerification {
 
 tasks.named('check') {
     dependsOn jacocoTestReport, jacocoTestCoverageVerification
+}
+
+// Downloads every dependency without compiling anything: lets the Docker build cache them in their own layer.
+tasks.register('resolveDependencies') {
+    description = 'Resolves and downloads all dependencies.'
+    def classpaths = ['compileClasspath', 'runtimeClasspath', 'testRuntimeClasspath',
+                      'integrationTestRuntimeClasspath', 'jooqCodegen'].collect { configurations.named(it) }
+    doLast { classpaths.each { it.get().resolve() } }
 }
