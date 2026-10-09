@@ -244,7 +244,7 @@ class ConcurrencyTest {
         assertTrue(env.balanceOf(account).signum() >= 0);
         assertLedgerConsistent();
         var last = env.accounts.statement(account, 1).entries().getFirst();
-        assertEquals(0, last.balanceAfter().compareTo(env.balanceOf(account)),
+        assertEquals(0, last.balanceAfter().value().compareTo(env.balanceOf(account)),
                 "the newest ledger entry must carry the final balance");
     }
 

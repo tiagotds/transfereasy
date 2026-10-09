@@ -37,8 +37,8 @@ class CustomerServiceTest {
 
         var fetched = env.customers.get("123");
 
-        assertEquals("123", created.taxNumber());
-        assertEquals("Ada Lovelace", fetched.name());
+        assertEquals("123", created.taxNumber().value());
+        assertEquals("Ada Lovelace", fetched.name().value());
     }
 
     @Test

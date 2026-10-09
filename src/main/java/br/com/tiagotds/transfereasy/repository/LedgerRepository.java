@@ -2,8 +2,10 @@ package br.com.tiagotds.transfereasy.repository;
 
 import static br.com.tiagotds.transfereasy.jooq.Tables.LEDGER_ENTRIES;
 
-import br.com.tiagotds.transfereasy.domain.EntryKind;
-import br.com.tiagotds.transfereasy.domain.LedgerEntry;
+import br.com.tiagotds.transfereasy.domain.model.AccountNumber;
+import br.com.tiagotds.transfereasy.domain.model.EntryKind;
+import br.com.tiagotds.transfereasy.domain.model.LedgerEntry;
+import br.com.tiagotds.transfereasy.domain.model.Money;
 import br.com.tiagotds.transfereasy.jooq.tables.records.LedgerEntriesRecord;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -32,7 +34,8 @@ public final class LedgerRepository {
     }
 
     private static LedgerEntry toDomain(LedgerEntriesRecord r) {
+        var counterparty = r.getCounterpartyAccountNumber() == null ? null : AccountNumber.of(r.getCounterpartyAccountNumber());
         return new LedgerEntry(r.getId(), r.getAccountId(), EntryKind.valueOf(r.getKind()), r.getAmount(),
-                r.getBalanceAfter(), r.getCounterpartyAccountNumber(), r.getTransferId(), r.getCreatedAt());
+                Money.of(r.getBalanceAfter()), counterparty, r.getTransferId(), r.getCreatedAt());
     }
 }

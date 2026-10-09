@@ -10,7 +10,7 @@ import br.com.tiagotds.transfereasy.domain.error.DomainException;
 import br.com.tiagotds.transfereasy.domain.error.InsufficientFunds;
 import br.com.tiagotds.transfereasy.domain.error.InvalidInput;
 import br.com.tiagotds.transfereasy.domain.error.NotFound;
-import br.com.tiagotds.transfereasy.domain.EntryKind;
+import br.com.tiagotds.transfereasy.domain.model.EntryKind;
 import br.com.tiagotds.transfereasy.support.TestEnvironment;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.AfterEach;
@@ -45,8 +45,8 @@ class AccountServiceTest {
 
             var account = env.accounts.open("111");
 
-            assertEquals(of("0"), account.balance());
-            assertEquals(32, account.number().length());
+            assertEquals(of("0"), account.balance().value());
+            assertEquals(32, account.number().value().length());
         }
 
         @Test
@@ -80,11 +80,11 @@ class AccountServiceTest {
 
             var updated = env.accounts.deposit(number, of("25.50"));
 
-            assertEquals(of("25.50"), updated.balance());
+            assertEquals(of("25.50"), updated.balance().value());
             var entry = env.accounts.statement(number, null).entries().getFirst();
             assertEquals(EntryKind.DEPOSIT, entry.kind());
             assertEquals(of("25.50"), entry.amount());
-            assertEquals(of("25.50"), entry.balanceAfter());
+            assertEquals(of("25.50"), entry.balanceAfter().value());
         }
 
         @Test
@@ -123,7 +123,7 @@ class AccountServiceTest {
 
             var updated = env.accounts.withdraw(number, of("40"));
 
-            assertEquals(of("60"), updated.balance());
+            assertEquals(of("60"), updated.balance().value());
             var entry = env.accounts.statement(number, null).entries().getFirst();
             assertEquals(EntryKind.WITHDRAWAL, entry.kind());
             assertEquals(of("-40"), entry.amount());
@@ -133,7 +133,7 @@ class AccountServiceTest {
         void withdrawing_the_exact_balance_is_allowed() {
             var number = env.accountWithBalance("111", "100");
 
-            assertEquals(of("0"), env.accounts.withdraw(number, of("100")).balance());
+            assertEquals(of("0"), env.accounts.withdraw(number, of("100")).balance().value());
         }
 
         @Test
@@ -162,16 +162,16 @@ class AccountServiceTest {
 
             var receipt = env.accounts.transfer(from, to, of("30"));
 
-            assertEquals(of("70"), receipt.from().balance());
-            assertEquals(of("35"), receipt.to().balance());
+            assertEquals(of("70"), receipt.from().balance().value());
+            assertEquals(of("35"), receipt.to().balance().value());
             var out = env.accounts.statement(from, null).entries().getFirst();
             var in = env.accounts.statement(to, null).entries().getFirst();
             assertEquals(EntryKind.TRANSFER_OUT, out.kind());
             assertEquals(EntryKind.TRANSFER_IN, in.kind());
             assertEquals(receipt.transferId(), out.transferId());
             assertEquals(receipt.transferId(), in.transferId());
-            assertEquals(to, out.counterpartyAccountNumber());
-            assertEquals(from, in.counterpartyAccountNumber());
+            assertEquals(to, out.counterparty().value());
+            assertEquals(from, in.counterparty().value());
         }
 
         @Test
@@ -242,7 +242,7 @@ class AccountServiceTest {
             assertEquals(of("-0.50"), entries.get(0).amount());
             assertEquals(of("2"), entries.get(1).amount());
             assertEquals(of("1"), entries.get(2).amount());
-            assertEquals(of("2.50"), entries.getFirst().balanceAfter());
+            assertEquals(of("2.50"), entries.getFirst().balanceAfter().value());
         }
 
         @Test

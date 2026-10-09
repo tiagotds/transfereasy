@@ -14,6 +14,8 @@ CREATE TABLE accounts (
     account_number VARCHAR(32)  NOT NULL,
     customer_id  BIGINT        NOT NULL,
     balance      NUMERIC(19,2) NOT NULL DEFAULT 0,
+    -- Optimistic concurrency token: incremented by every balance change.
+    version      BIGINT        NOT NULL DEFAULT 0,
     created_at   TIMESTAMP WITH TIME ZONE NOT NULL,
     CONSTRAINT uq_accounts_number UNIQUE (account_number),
     CONSTRAINT fk_accounts_customer FOREIGN KEY (customer_id) REFERENCES customers (id),

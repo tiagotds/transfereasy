@@ -2,7 +2,9 @@ package br.com.tiagotds.transfereasy.repository;
 
 import static br.com.tiagotds.transfereasy.jooq.Tables.CUSTOMERS;
 
-import br.com.tiagotds.transfereasy.domain.Customer;
+import br.com.tiagotds.transfereasy.domain.model.Customer;
+import br.com.tiagotds.transfereasy.domain.model.CustomerName;
+import br.com.tiagotds.transfereasy.domain.model.TaxNumber;
 import br.com.tiagotds.transfereasy.jooq.tables.records.CustomersRecord;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -34,6 +36,6 @@ public final class CustomerRepository {
     }
 
     private static Customer toDomain(CustomersRecord r) {
-        return new Customer(r.getId(), r.getTaxNumber(), r.getName(), r.getCreatedAt());
+        return new Customer(r.getId(), TaxNumber.of(r.getTaxNumber()), CustomerName.of(r.getName()), r.getCreatedAt());
     }
 }

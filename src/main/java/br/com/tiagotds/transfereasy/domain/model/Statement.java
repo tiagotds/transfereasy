@@ -1,4 +1,4 @@
-package br.com.tiagotds.transfereasy.domain;
+package br.com.tiagotds.transfereasy.domain.model;
 
 import java.util.List;
 
