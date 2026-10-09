@@ -1,0 +1,149 @@
+plugins {
+    id 'application'
+    id 'jacoco'
+    alias(libs.plugins.jooq.codegen)
+}
+
+group = 'br.com.tiagotds'
+version = '3.0.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation libs.jooq
+    implementation libs.h2
+    implementation libs.jackson.databind
+    implementation libs.jackson.jsr310
+
+    // jOOQ classes are generated from the same DDL that is executed at startup: one source of truth.
+    jooqCodegen libs.jooq.meta.extensions
+}
+
+application {
+    mainClass = 'br.com.tiagotds.transfereasy.Main'
+}
+
+jooq {
+    configuration {
+        generator {
+            database {
+                name = 'org.jooq.meta.extensions.ddl.DDLDatabase'
+                includes = '.*'
+                properties {
+                    property {
+                        key = 'scripts'
+                        value = 'src/main/resources/db/schema.sql'
+                    }
+                }
+            }
+            generate {
+                deprecated = false
+                daos = false
+                pojos = false
+                interfaces = false
+            }
+            target {
+                packageName = 'br.com.tiagotds.transfereasy.jooq'
+                directory = 'build/generated-sources/jooq'
+            }
+        }
+    }
+}
+
+tasks.named('jooqCodegen') {
+    inputs.file('src/main/resources/db/schema.sql')
+}
+
+sourceSets.main.java.srcDir(tasks.named('jooqCodegen'))
+
+testing {
+    suites {
+        configureEach {
+            useJUnitJupiter(libs.versions.junit.get())
+            targets.configureEach {
+                testTask.configure {
+                    systemProperty 'org.jooq.no-logo', 'true'
+                    systemProperty 'org.jooq.no-tips', 'true'
+                    testLogging {
+                        events 'failed'
+                        exceptionFormat = 'full'
+                    }
+                }
+            }
+        }
+        test {
+            dependencies {
+                implementation libs.jooq
+            }
+        }
+        // End-to-end tests over real HTTP against a running application instance.
+        integrationTest(JvmTestSuite) {
+            dependencies {
+                implementation project()
+                implementation libs.jackson.databind
+            }
+            targets.configureEach {
+                testTask.configure {
+                    shouldRunAfter(test)
+                }
+            }
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn testing.suites.integrationTest
+}
+
+jacoco {
+    toolVersion = libs.versions.jacoco.get()
+}
+
+def coverageExcludes = [
+        'br/com/tiagotds/transfereasy/jooq/**',
+        'br/com/tiagotds/transfereasy/Main.class',
+        'br/com/tiagotds/transfereasy/HealthCheck.class',
+]
+
+// Coverage is measured across both suites: unit/component tests and the HTTP integration tests.
+[jacocoTestReport, jacocoTestCoverageVerification].each { task ->
+    task.configure {
+        dependsOn tasks.named('test'), tasks.named('integrationTest')
+        executionData.setFrom(fileTree(layout.buildDirectory.dir('jacoco')).include('*.exec'))
+        classDirectories.setFrom(files(sourceSets.main.output).asFileTree.matching { exclude coverageExcludes })
+    }
+}
+
+jacocoTestReport {
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+jacocoTestCoverageVerification {
+    violationRules {
+        rule {
+            limit {
+                counter = 'LINE'
+                minimum = 0.95
+            }
+            limit {
+                counter = 'BRANCH'
+                minimum = 0.85
+            }
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn jacocoTestReport, jacocoTestCoverageVerification
+}
