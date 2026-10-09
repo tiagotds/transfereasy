@@ -1,20 +1,15 @@
 package br.com.tiagotds.transfereasy;
 
-import br.com.tiagotds.transfereasy.infrastructure.persistence.Database;
-import br.com.tiagotds.transfereasy.infrastructure.persistence.TransactionRunner;
 import br.com.tiagotds.transfereasy.http.ApiRoutes;
 import br.com.tiagotds.transfereasy.http.HttpApplication;
 import br.com.tiagotds.transfereasy.infrastructure.config.Settings;
-import br.com.tiagotds.transfereasy.infrastructure.persistence.JooqAccountRepository;
-import br.com.tiagotds.transfereasy.infrastructure.persistence.JooqCustomerRepository;
-import br.com.tiagotds.transfereasy.infrastructure.persistence.JooqLedgerRepository;
-import br.com.tiagotds.transfereasy.service.AccountService;
-import br.com.tiagotds.transfereasy.service.CustomerService;
+import br.com.tiagotds.transfereasy.infrastructure.persistence.Database;
+import br.com.tiagotds.transfereasy.infrastructure.persistence.TransactionRunner;
 import java.io.IOException;
 import java.time.Clock;
 import java.util.UUID;
 
-/** Composition root: wires the object graph by hand (no DI container). */
+/** Composition root: database, core and HTTP edge, wired by hand (no DI container). */
 public final class Application implements AutoCloseable {
 
     private final Database database;
@@ -28,15 +23,8 @@ public final class Application implements AutoCloseable {
     public static Application start(Settings settings) throws IOException {
         var database = Database.startInMemory("transfereasy-" + UUID.randomUUID(), settings.database());
         try {
-            var tx = new TransactionRunner(database);
-            var customerRepo = new JooqCustomerRepository();
-            var accountRepo = new JooqAccountRepository();
-            var ledgerRepo = new JooqLedgerRepository();
-            var clock = Clock.systemUTC();
-            var customers = new CustomerService(tx, customerRepo, accountRepo, clock);
-            var accounts = new AccountService(tx, customerRepo, accountRepo, ledgerRepo, clock, UUID::randomUUID,
-                    settings.statements(), settings.money().amountPolicy());
-            var http = new HttpApplication(settings.http(), new ApiRoutes(customers, accounts).build());
+            var core = Core.wire(settings, new TransactionRunner(database), Clock.systemUTC(), UUID::randomUUID);
+            var http = new HttpApplication(settings.http(), new ApiRoutes(core).build());
             http.start();
             return new Application(database, http);
         } catch (IOException | RuntimeException e) {

@@ -1,4 +1,4 @@
-package br.com.tiagotds.transfereasy.service;
+package br.com.tiagotds.transfereasy.application.scenarios;
 
 import static br.com.tiagotds.transfereasy.support.Money.of;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -89,7 +89,7 @@ class ConcurrencyTest {
         for (int i = 0; i < THREADS; i++) {
             tasks.add(() -> {
                 try {
-                    env.accounts.withdraw(account, of("30"));
+                    env.withdraw(account, of("30"));
                     succeeded.incrementAndGet();
                 } catch (DomainException e) {
                     assertInstanceOf(InsufficientFunds.class, e);
@@ -116,7 +116,7 @@ class ConcurrencyTest {
         for (int i = 0; i < THREADS; i++) {
             tasks.add(() -> {
                 try {
-                    env.accounts.transfer(source, target, of("40"));
+                    env.transfer(source, target, of("40"));
                     succeeded.incrementAndGet();
                 } catch (DomainException e) {
                     assertInstanceOf(InsufficientFunds.class, e);
@@ -140,7 +140,7 @@ class ConcurrencyTest {
         for (int i = 0; i < THREADS; i++) {
             tasks.add(() -> {
                 for (int n = 0; n < 10; n++) {
-                    env.accounts.deposit(account, of("1.25"));
+                    env.deposit(account, of("1.25"));
                 }
                 return null;
             });
@@ -149,7 +149,7 @@ class ConcurrencyTest {
         race(tasks);
 
         assertEquals(of("400"), env.balanceOf(account));
-        assertEquals(THREADS * 10, env.accounts.statement(account, 1000).entries().size(),
+        assertEquals(THREADS * 10, env.statement(account, 1000).entries().size(),
                 "every deposit must have exactly one ledger entry (320 entries, under the 1000 cap)");
         assertLedgerConsistent();
     }
@@ -164,9 +164,9 @@ class ConcurrencyTest {
             tasks.add(() -> {
                 for (int n = 0; n < 20; n++) {
                     if (forward) {
-                        env.accounts.transfer(a, b, of("1"));
+                        env.transfer(a, b, of("1"));
                     } else {
-                        env.accounts.transfer(b, a, of("1"));
+                        env.transfer(b, a, of("1"));
                     }
                 }
                 return null;
@@ -197,7 +197,7 @@ class ConcurrencyTest {
                     int from = random.nextInt(accounts);
                     int to = (from + 1 + random.nextInt(accounts - 1)) % accounts;
                     try {
-                        env.accounts.transfer(numbers.get(from), numbers.get(to),
+                        env.transfer(numbers.get(from), numbers.get(to),
                                 BigDecimal.valueOf(1 + random.nextInt(60)));
                     } catch (DomainException e) {
                         assertInstanceOf(InsufficientFunds.class, e);
@@ -226,9 +226,9 @@ class ConcurrencyTest {
                 for (int n = 0; n < 25; n++) {
                     try {
                         if (deposit) {
-                            env.accounts.deposit(account, of("3"));
+                            env.deposit(account, of("3"));
                         } else {
-                            env.accounts.withdraw(account, of("2"));
+                            env.withdraw(account, of("2"));
                         }
                     } catch (DomainException e) {
                         assertInstanceOf(InsufficientFunds.class, e);
@@ -243,7 +243,7 @@ class ConcurrencyTest {
         // Outcome depends on interleaving, so assert invariants rather than an exact figure.
         assertTrue(env.balanceOf(account).signum() >= 0);
         assertLedgerConsistent();
-        var last = env.accounts.statement(account, 1).entries().getFirst();
+        var last = env.statement(account, 1).entries().getFirst();
         assertEquals(0, last.balanceAfter().value().compareTo(env.balanceOf(account)),
                 "the newest ledger entry must carry the final balance");
     }
@@ -256,7 +256,7 @@ class ConcurrencyTest {
         for (int i = 0; i < THREADS; i++) {
             tasks.add(() -> {
                 try {
-                    env.customers.create("same", "Same Person");
+                    env.createCustomer("same", "Same Person");
                     created.incrementAndGet();
                 } catch (DomainException e) {
                     assertInstanceOf(Conflict.class, e);
@@ -270,6 +270,6 @@ class ConcurrencyTest {
 
         assertEquals(1, created.get());
         assertEquals(THREADS - 1, conflicts.get());
-        assertEquals(1, env.customers.search(null).size());
+        assertEquals(1, env.search(null).size());
     }
 }
