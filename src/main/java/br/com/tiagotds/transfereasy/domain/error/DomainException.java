@@ -5,7 +5,7 @@ package br.com.tiagotds.transfereasy.domain.error;
  * exceptions skip stack-trace capture: they are expected results, not bugs, and are thrown on hot paths.
  */
 public abstract sealed class DomainException extends RuntimeException
-        permits InvalidInput, NotFound, Conflict, InsufficientFunds {
+        permits InvalidInput, NotFound, Conflict, InsufficientFunds, ConcurrentModification {
 
     protected DomainException(String message) {
         super(message, null, false, false);

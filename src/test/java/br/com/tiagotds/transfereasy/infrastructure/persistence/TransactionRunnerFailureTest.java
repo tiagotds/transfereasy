@@ -1,4 +1,4 @@
-package br.com.tiagotds.transfereasy.db;
+package br.com.tiagotds.transfereasy.infrastructure.persistence;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -57,7 +57,7 @@ class TransactionRunnerFailureTest {
             throw new SQLException("pool exhausted");
         });
 
-        var e = assertThrows(DatabaseException.class, () -> runner.inTransaction(db -> null));
+        var e = assertThrows(DatabaseException.class, () -> runner.inTransaction(() -> null));
 
         assertEquals("Could not obtain a database connection", e.getMessage());
         assertEquals("pool exhausted", e.getCause().getMessage());
@@ -67,7 +67,7 @@ class TransactionRunnerFailureTest {
     void failure_to_begin_is_wrapped_and_the_connection_is_still_closed() {
         var script = new Script("setAutoCommit");
 
-        var e = assertThrows(DatabaseException.class, () -> script.runner().inTransaction(db -> null));
+        var e = assertThrows(DatabaseException.class, () -> script.runner().inTransaction(() -> null));
 
         assertEquals("Could not begin transaction", e.getMessage());
         assertTrue(script.calls.contains("close"));
@@ -77,7 +77,7 @@ class TransactionRunnerFailureTest {
     void failure_to_commit_is_wrapped_rolled_back_and_the_connection_closed() {
         var script = new Script("commit");
 
-        var e = assertThrows(DatabaseException.class, () -> script.runner().inTransaction(db -> null));
+        var e = assertThrows(DatabaseException.class, () -> script.runner().inTransaction(() -> null));
 
         assertEquals("Could not commit transaction", e.getMessage());
         assertTrue(script.calls.contains("rollback"));
@@ -89,7 +89,7 @@ class TransactionRunnerFailureTest {
         var script = new Script("rollback");
         var original = new IllegalStateException("original");
 
-        var thrown = assertThrows(IllegalStateException.class, () -> script.runner().inTransaction(db -> {
+        var thrown = assertThrows(IllegalStateException.class, () -> script.runner().inTransaction(() -> {
             throw original;
         }));
 
@@ -102,7 +102,7 @@ class TransactionRunnerFailureTest {
     void failure_to_restore_defaults_still_closes_the_connection() {
         var script = new Script("setReadOnly:2");
 
-        assertEquals("ok", script.runner().inTransaction(db -> "ok"));
+        assertEquals("ok", script.runner().inTransaction(() -> "ok"));
 
         assertTrue(script.calls.contains("close"));
     }
@@ -111,14 +111,14 @@ class TransactionRunnerFailureTest {
     void failure_to_close_does_not_mask_the_result() {
         var script = new Script("close");
 
-        assertEquals("ok", script.runner().inTransaction(db -> "ok"));
+        assertEquals("ok", script.runner().inTransaction(() -> "ok"));
     }
 
     @Test
     void the_read_only_flavour_uses_a_read_only_repeatable_read_transaction() {
         var script = new Script();
 
-        script.runner().inReadOnlyTransaction(db -> null);
+        script.runner().inReadOnlyTransaction(() -> null);
 
         assertTrue(script.calls.indexOf("setTransactionIsolation") < script.calls.indexOf("commit"));
         assertTrue(script.calls.contains("setReadOnly"));

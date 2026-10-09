@@ -1,18 +1,16 @@
 package br.com.tiagotds.transfereasy.service;
 
-import br.com.tiagotds.transfereasy.db.TransactionRunner;
+import br.com.tiagotds.transfereasy.domain.error.NotFound;
 import br.com.tiagotds.transfereasy.domain.model.Account;
 import br.com.tiagotds.transfereasy.domain.model.Customer;
-import br.com.tiagotds.transfereasy.domain.error.Conflict;
-import br.com.tiagotds.transfereasy.domain.error.NotFound;
 import br.com.tiagotds.transfereasy.domain.model.CustomerName;
 import br.com.tiagotds.transfereasy.domain.model.TaxNumber;
-import br.com.tiagotds.transfereasy.repository.AccountRepository;
-import br.com.tiagotds.transfereasy.repository.CustomerRepository;
+import br.com.tiagotds.transfereasy.domain.port.AccountRepository;
+import br.com.tiagotds.transfereasy.domain.port.CustomerRepository;
+import br.com.tiagotds.transfereasy.infrastructure.persistence.TransactionRunner;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.List;
-import org.jooq.exception.IntegrityConstraintViolationException;
 
 public final class CustomerService {
 
@@ -30,31 +28,25 @@ public final class CustomerService {
     }
 
     public Customer create(String taxNumber, String name) {
-        var cleanTax = TaxNumber.of(taxNumber);
-        var cleanName = CustomerName.of(name);
-        try {
-            return tx.inTransaction(db -> customers.insert(db, cleanTax.value(), cleanName.value(),
-                    OffsetDateTime.now(clock)));
-        } catch (IntegrityConstraintViolationException e) {
-            // the UNIQUE constraint is the arbiter, so two concurrent creations can never both succeed
-            throw Conflict.duplicateCustomer(cleanTax);
-        }
+        var tax = TaxNumber.of(taxNumber);
+        var customerName = CustomerName.of(name);
+        return tx.inTransaction(() -> customers.add(tax, customerName, OffsetDateTime.now(clock)));
     }
 
     public Customer get(String taxNumber) {
-        return tx.inReadOnlyTransaction(db -> customers.findByTaxNumber(db, taxNumber))
-                .orElseThrow(NotFound::customer);
+        var tax = TaxNumber.of(taxNumber);
+        return tx.inReadOnlyTransaction(() -> customers.find(tax)).orElseThrow(NotFound::customer);
     }
 
     public List<Customer> search(String nameFragment) {
-        return tx.inReadOnlyTransaction(db -> customers.findAll(db, nameFragment));
+        return tx.inReadOnlyTransaction(() -> customers.search(nameFragment));
     }
 
     public List<Account> accountsOf(String taxNumber) {
-        return tx.inReadOnlyTransaction(db -> {
-            var customer = customers.findByTaxNumber(db, taxNumber)
-                    .orElseThrow(NotFound::customer);
-            return accounts.findByCustomer(db, customer.id());
+        var tax = TaxNumber.of(taxNumber);
+        return tx.inReadOnlyTransaction(() -> {
+            var customer = customers.find(tax).orElseThrow(NotFound::customer);
+            return accounts.findByCustomer(customer.id());
         });
     }
 }

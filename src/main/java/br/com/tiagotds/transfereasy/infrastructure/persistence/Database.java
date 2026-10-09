@@ -1,4 +1,4 @@
-package br.com.tiagotds.transfereasy.db;
+package br.com.tiagotds.transfereasy.infrastructure.persistence;
 
 import br.com.tiagotds.transfereasy.infrastructure.config.DatabaseSettings;
 import java.io.IOException;

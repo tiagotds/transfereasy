@@ -1,4 +1,4 @@
-package br.com.tiagotds.transfereasy.db;
+package br.com.tiagotds.transfereasy.infrastructure.persistence;
 
 /** Unrecoverable infrastructure failure (connection, commit, rollback...). */
 public final class DatabaseException extends RuntimeException {
