@@ -2,6 +2,8 @@ package br.com.tiagotds.transfereasy.support;
 
 import br.com.tiagotds.transfereasy.db.Database;
 import br.com.tiagotds.transfereasy.db.TransactionRunner;
+import br.com.tiagotds.transfereasy.infrastructure.config.Config;
+import br.com.tiagotds.transfereasy.infrastructure.config.Settings;
 import br.com.tiagotds.transfereasy.repository.AccountRepository;
 import br.com.tiagotds.transfereasy.repository.CustomerRepository;
 import br.com.tiagotds.transfereasy.repository.LedgerRepository;
@@ -27,13 +29,14 @@ public final class TestEnvironment implements AutoCloseable {
     public final AccountService accounts;
 
     public TestEnvironment(int poolSize) {
-        this.database = Database.startInMemory("test-" + UUID.randomUUID(), poolSize);
+        var settings = Settings.from(Config.defaults().with("db.pool-size", String.valueOf(poolSize)));
+        this.database = Database.startInMemory("test-" + UUID.randomUUID(), settings.database());
         this.tx = new TransactionRunner(database);
         var customerRepo = new CustomerRepository();
         var accountRepo = new AccountRepository();
         this.customers = new CustomerService(tx, customerRepo, accountRepo, FIXED_CLOCK);
         this.accounts = new AccountService(tx, customerRepo, accountRepo, new LedgerRepository(),
-                FIXED_CLOCK, UUID::randomUUID);
+                FIXED_CLOCK, UUID::randomUUID, settings.statements());
     }
 
     public TestEnvironment() {

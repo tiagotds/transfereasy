@@ -3,6 +3,7 @@ package br.com.tiagotds.transfereasy.http;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import br.com.tiagotds.transfereasy.infrastructure.config.HttpSettings;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -36,7 +37,7 @@ class HttpApplicationInternalsTest {
                 .add("GET", "/fatal", r -> {
                     throw new StackOverflowError("secret fatal detail");
                 });
-        try (var app = new HttpApplication(0, router)) {
+        try (var app = new HttpApplication(new HttpSettings(0, 1024), router)) {
             app.start();
             var client = HttpClient.newHttpClient();
             for (var path : new String[]{"/boom", "/fatal"}) {

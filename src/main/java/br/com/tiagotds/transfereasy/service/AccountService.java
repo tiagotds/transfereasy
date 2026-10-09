@@ -7,6 +7,7 @@ import br.com.tiagotds.transfereasy.domain.DomainException;
 import br.com.tiagotds.transfereasy.domain.EntryKind;
 import br.com.tiagotds.transfereasy.domain.Statement;
 import br.com.tiagotds.transfereasy.domain.TransferReceipt;
+import br.com.tiagotds.transfereasy.infrastructure.config.StatementSettings;
 import br.com.tiagotds.transfereasy.repository.AccountRepository;
 import br.com.tiagotds.transfereasy.repository.CustomerRepository;
 import br.com.tiagotds.transfereasy.repository.LedgerRepository;
@@ -26,24 +27,24 @@ import org.jooq.DSLContext;
  */
 public final class AccountService {
 
-    public static final int DEFAULT_STATEMENT_SIZE = 100;
-    public static final int MAX_STATEMENT_SIZE = 1000;
-
     private final TransactionRunner tx;
     private final CustomerRepository customers;
     private final AccountRepository accounts;
     private final LedgerRepository ledger;
     private final Clock clock;
     private final Supplier<UUID> ids;
+    private final StatementSettings statements;
 
     public AccountService(TransactionRunner tx, CustomerRepository customers, AccountRepository accounts,
-                          LedgerRepository ledger, Clock clock, Supplier<UUID> ids) {
+                          LedgerRepository ledger, Clock clock, Supplier<UUID> ids,
+                          StatementSettings statements) {
         this.tx = tx;
         this.customers = customers;
         this.accounts = accounts;
         this.ledger = ledger;
         this.clock = clock;
         this.ids = ids;
+        this.statements = statements;
     }
 
     public Account open(String customerTaxNumber) {
@@ -63,9 +64,9 @@ public final class AccountService {
     }
 
     public Statement statement(String number, Integer requestedSize) {
-        int size = requestedSize == null ? DEFAULT_STATEMENT_SIZE : requestedSize;
-        if (size < 1 || size > MAX_STATEMENT_SIZE) {
-            throw DomainException.invalid("Parameter 'limit' must be between 1 and " + MAX_STATEMENT_SIZE + ".");
+        int size = requestedSize == null ? statements.defaultSize() : requestedSize;
+        if (size < 1 || size > statements.maxSize()) {
+            throw DomainException.invalid("Parameter 'limit' must be between 1 and " + statements.maxSize() + ".");
         }
         return tx.inReadOnlyTransaction(db -> {
             var account = accounts.findByNumber(db, number).orElseThrow(() -> accountNotFound(number));

@@ -1,6 +1,7 @@
 package br.com.tiagotds.transfereasy.http;
 
 import br.com.tiagotds.transfereasy.domain.DomainException;
+import br.com.tiagotds.transfereasy.infrastructure.config.HttpSettings;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -17,14 +18,15 @@ import java.util.logging.Logger;
 public final class HttpApplication implements AutoCloseable {
 
     private static final Logger LOG = Logger.getLogger(HttpApplication.class.getName());
-    private static final int MAX_BODY_BYTES = 64 * 1024;
 
     private final HttpServer server;
     private final Router router;
+    private final int maxBodyBytes;
 
-    public HttpApplication(int port, Router router) throws IOException {
+    public HttpApplication(HttpSettings settings, Router router) throws IOException {
         this.router = router;
-        this.server = HttpServer.create(new InetSocketAddress(port), 0);
+        this.maxBodyBytes = settings.maxBodyBytes();
+        this.server = HttpServer.create(new InetSocketAddress(settings.port()), 0);
         this.server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         this.server.createContext("/", this::handle);
     }
@@ -103,10 +105,10 @@ public final class HttpApplication implements AutoCloseable {
     }
 
     /** @return the body bytes, or {@code null} when the limit is exceeded. */
-    private static byte[] readBody(HttpExchange exchange) throws IOException {
+    private byte[] readBody(HttpExchange exchange) throws IOException {
         try (var in = exchange.getRequestBody()) {
-            var bytes = in.readNBytes(MAX_BODY_BYTES + 1);
-            return bytes.length > MAX_BODY_BYTES ? null : bytes;
+            var bytes = in.readNBytes(maxBodyBytes + 1);
+            return bytes.length > maxBodyBytes ? null : bytes;
         }
     }
 

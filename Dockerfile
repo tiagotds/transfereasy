@@ -13,7 +13,7 @@ RUN useradd --system --uid 10001 app
 WORKDIR /app
 COPY --from=build /src/build/install/transfereasy/lib lib
 USER app
-ENV PORT=8080
+ENV HTTP_PORT=8080
 EXPOSE 8080
 HEALTHCHECK --interval=5s --timeout=3s --retries=10 \
   CMD ["java", "-cp", "lib/*", "br.com.tiagotds.transfereasy.HealthCheck"]

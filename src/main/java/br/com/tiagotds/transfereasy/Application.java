@@ -1,10 +1,10 @@
 package br.com.tiagotds.transfereasy;
 
-import br.com.tiagotds.transfereasy.config.AppConfig;
 import br.com.tiagotds.transfereasy.db.Database;
 import br.com.tiagotds.transfereasy.db.TransactionRunner;
 import br.com.tiagotds.transfereasy.http.ApiRoutes;
 import br.com.tiagotds.transfereasy.http.HttpApplication;
+import br.com.tiagotds.transfereasy.infrastructure.config.Settings;
 import br.com.tiagotds.transfereasy.repository.AccountRepository;
 import br.com.tiagotds.transfereasy.repository.CustomerRepository;
 import br.com.tiagotds.transfereasy.repository.LedgerRepository;
@@ -25,8 +25,8 @@ public final class Application implements AutoCloseable {
         this.http = http;
     }
 
-    public static Application start(AppConfig config) throws IOException {
-        var database = Database.startInMemory("transfereasy-" + UUID.randomUUID(), config.dbPoolSize());
+    public static Application start(Settings settings) throws IOException {
+        var database = Database.startInMemory("transfereasy-" + UUID.randomUUID(), settings.database());
         try {
             var tx = new TransactionRunner(database);
             var customerRepo = new CustomerRepository();
@@ -34,8 +34,9 @@ public final class Application implements AutoCloseable {
             var ledgerRepo = new LedgerRepository();
             var clock = Clock.systemUTC();
             var customers = new CustomerService(tx, customerRepo, accountRepo, clock);
-            var accounts = new AccountService(tx, customerRepo, accountRepo, ledgerRepo, clock, UUID::randomUUID);
-            var http = new HttpApplication(config.port(), new ApiRoutes(customers, accounts).build());
+            var accounts = new AccountService(tx, customerRepo, accountRepo, ledgerRepo, clock, UUID::randomUUID,
+                    settings.statements());
+            var http = new HttpApplication(settings.http(), new ApiRoutes(customers, accounts).build());
             http.start();
             return new Application(database, http);
         } catch (IOException | RuntimeException e) {
