@@ -1,245 +1,180 @@
-# transfereasy 2
+# transfereasy 3
 
-A small banking REST API: customers, accounts, deposits, withdrawals, transfers and statements.
+A small banking REST API: customers, accounts, deposits, withdrawals, transfers and statements. It is built on plain Java 21, with no framework, and its design centres on **correctness under concurrency**.
 
-This is a ground-up rewrite of my original take-home exercise. The reviewers' feedback on the first version was:
-
-| Feedback | What this version does about it |
-|---|---|
-| **No concurrent tests** | `ConcurrencyTest` races 32 threads on shared accounts (withdrawals, transfers, opposite-direction transfers, random storms). The Docker smoke test also fires 20 parallel HTTP withdrawals. |
-| **Confusing tests** | Tests are named as sentences describing behaviour (`withdrawing_more_than_the_balance_is_refused_and_changes_nothing`), grouped with `@Nested`, and share one small fixture (`TestEnvironment`). Every test uses its own isolated database. |
-| **TX leak on `Throwable`** | One class, `TransactionRunner`, owns begin/commit/rollback/close. It catches `Throwable`, always rolls back and always returns the connection. `TransactionRunnerTest` runs on a **single-connection pool**, so any leak would hang the next call. |
-| **Balances checked outside transactions → negative balances** | The check and the debit are one atomic SQL statement (`UPDATE ... WHERE balance >= :amount`), and the schema has `CHECK (balance >= 0)` as a last line of defence. |
+v3 refactors v2 into a DDD-shaped, configuration-driven codebase on Gradle, delivered test-first, one commit per deliverable (`git log --reverse`). The plan and the reasoning behind it are in [`docs/IMPROVE.md`](docs/IMPROVE.md).
 
 ## Stack
 
-- **Java 21** (records, sealed interfaces, pattern-matching `switch`, virtual threads)
-- **No Spring, no DI container, no servlet container.** HTTP is the JDK's built-in `com.sun.net.httpserver`, one virtual thread per request. Wiring is done by hand in `Application`.
-- **H2** in-memory database (embedded) and **jOOQ** for all SQL. jOOQ classes are *generated at build time* from `src/main/resources/db/schema.sql`, which is also the file executed at startup, so there is a single source of truth for the schema.
-- **Jackson** for JSON (the JDK has no JSON parser), configured strictly.
-- **JUnit 5** + **JaCoCo** (the build fails below 95% line / 85% branch coverage).
+- **Java 21**: records, sealed hierarchies, pattern-matching `switch`, virtual threads.
+- **No Spring, no DI container, no servlet container.** HTTP runs on the JDK's `com.sun.net.httpserver`, one virtual thread per request, and the wiring is done by hand (`Core`, `Application`).
+- **H2** in-memory database and **jOOQ**. jOOQ classes are generated at build time from `src/main/resources/db/schema.sql`, the same file executed at startup.
+- **Jackson** for strict JSON.
+- **Gradle** (Groovy DSL, version catalog, wrapper). **JUnit 5**, plus a JaCoCo gate across both test suites (95% line / 85% branch).
 
 ## Design
 
-### Layers
+### Layers (dependencies point inwards)
 
 ```
-http/        HttpApplication (server, error mapping), Router, ApiRoutes (contract), Json, Dtos
-service/     CustomerService, AccountService   <- business rules, one transaction per operation
-repository/  CustomerRepository, AccountRepository, LedgerRepository   <- jOOQ queries only
-db/          Database (H2 + pool), TransactionRunner
-domain/      records (Customer, Account, LedgerEntry...), Amounts, DomainException
+domain/            pure Java: no jOOQ, no Jackson, no HTTP
+  model/           Money, AccountNumber, TaxNumber, CustomerName  (self-validating value objects)
+                   Account aggregate -> Movement(next state, Posting); Transfer domain service
+  port/            AccountRepository, CustomerRepository, LedgerRepository, IdempotencyStore
+  error/           sealed DomainException: InvalidInput, NotFound, Conflict, InsufficientFunds,
+                   ConcurrentModification (Retryable), IdempotencyKeyReused
+application/
+  command/         sealed Command<R> + CommandHandler<C, R>
+  handler/         MoneyMovementHandler -> SingleAccountMovementHandler (Template Method) -> Deposit/Withdraw
+                   TransferHandler, CreateCustomerHandler, OpenAccountHandler
+  pipeline/        CommandBus + Middleware chain:  Retry -> Transaction -> Idempotency -> handler
+  query/           AccountQueries, CustomerQueries (read-only snapshot per query)
+infrastructure/
+  config/          Config (properties < env < system props) -> typed *Settings records
+  persistence/     TransactionRunner, JooqRepository<R, D> base + adapters, LockingStrategy
+  http/            HttpApplication (+ Bulkhead), Router, ApiRoutes, CommandRoute, ErrorMapper, Json, Dtos
+Core / Application composition roots
 ```
 
-Dependencies only point downwards. Repositories receive a `DSLContext` that is bound to the current transaction, so they can never open, commit or leak one.
+Every write is a `Command` sent through the bus. Each endpoint is one line in `ApiRoutes`, built either from a query or from the generic `CommandRoute.of(bus, BodyType, toCommand, toResponse)`.
+
+### Patterns and abstractions
+
+| Where | What | Why |
+|---|---|---|
+| `CommandBus` / `Middleware` | Chain of Responsibility | Retry, transactions and idempotency are cross-cutting; handlers contain none of it |
+| `SingleAccountMovementHandler` | Template Method | Deposit and withdraw share every step but the movement itself |
+| `LockingStrategy` | Strategy (enum) | Pessimistic and optimistic locking are interchangeable via config |
+| `JooqRepository<R, D>` | Generic base class | Table binding, insert, find and mapping are written once |
+| `CommandRoute`, `Command<R>`, `CommandHandler<C, R>` | Generics | Typed results end to end, with no casts in callers |
+| `DomainException`, `Command` | Sealed hierarchies | Exhaustive `switch` in `ErrorMapper`, so a new error cannot go unmapped |
+| `MovementDependencies`, `Settings` | Parameter objects | No long constructor lists repeated across classes |
 
 ### Money
 
-- Amounts are `BigDecimal` with scale 2 (`NUMERIC(19,2)` in the database). Never `double`.
-- Input is validated: positive, at most 2 decimal places (`5.100` is accepted, `1.001` is not), at most 1 trillion.
-- JSON numbers are parsed as exact decimals and written as plain numbers.
+- `Money` is non-negative and always has scale 2, so `10` and `10.00` are equal. It is stored as `NUMERIC(19,2)`.
+- `AmountPolicy` validates movement amounts: positive, at most 2 decimal places, and at most `money.max-amount`.
 
-### Concurrency model
+## Concurrency model
 
-Three mechanisms, each covering a specific hazard:
+| Hazard | Mechanism |
+|---|---|
+| Two withdrawals spend the same money | The aggregate checks funds on a state read inside the transaction, and `save()` is a **compare-and-set on `version`**. `CHECK (balance >= 0)` in the schema is the last line of defence. |
+| Lost update | Same compare-and-set: a write based on a stale read fails with `ConcurrentModification`. |
+| Deadlock between `A→B` and `B→A` | Both strategies load and write accounts in **ascending id order**, so row locks follow one global order. |
+| Contention policy | `account.locking=PESSIMISTIC` (`SELECT … FOR UPDATE`: competitors queue and never conflict) or `OPTIMISTIC` (plain read: no waiting, and losers are retried). |
+| Transient failures | `RetryMiddleware` sits **outside** the transaction, so each attempt is a fresh transaction. It retries `Retryable` errors and SQLSTATE `40001` / `HYT00` with exponential backoff and full jitter, and returns 409 `CONCURRENT_MODIFICATION` once attempts run out. |
+| A client retries a POST, possibly many times at once | `Idempotency-Key` header. The key is **claimed in the same transaction** as the operation, before it runs, and its primary key decides which duplicate wins. Losers retry, then replay the committed result with `Idempotent-Replayed: true`. A different body under the same key returns 422 `IDEMPOTENCY_KEY_REUSED`. A failed operation releases the key. |
+| A burst queues behind the DB pool | A **bulkhead** (fair semaphore, `http.max-in-flight`) lets the excess wait up to `http.acquire-timeout`, then returns 503 `OVERLOADED` with `Retry-After`. `/health` is exempt. |
+| Duplicate customers created concurrently | `UNIQUE(tax_number)` is the arbiter: exactly one winner, and the rest get 409. |
 
-1. **Atomic conditional debit.** `debitIfSufficient` is a single `UPDATE accounts SET balance = balance - ? WHERE id = ? AND balance >= ?`. If no row is updated, funds are insufficient. There is no read-then-write gap, so two concurrent withdrawals can never both spend the same money.
-2. **Ordered row locks for transfers.** A transfer runs `SELECT ... FOR UPDATE` on both accounts **ordered by id**. Every transfer acquires locks in the same global order, so `A→B` and `B→A` running at once cannot deadlock.
-3. **Database constraints as the final arbiter.** `UNIQUE(tax_number)` decides concurrent customer creation (exactly one winner, the rest get 409), and `CHECK (balance >= 0)` makes a negative balance physically impossible even if the code were wrong.
+Invariant asserted by every race test: **sum of all balances = sum of all ledger entries**.
 
-### Ledger
+## Configuration
 
-Every movement appends an immutable `ledger_entries` row in the same transaction as the balance change, with a signed amount and the resulting `balance_after`. A transfer writes two entries sharing a `transferId`. Invariant, asserted by the concurrency tests: **sum of all balances = sum of all ledger entries**.
+Every default lives in [`src/main/resources/application.properties`](src/main/resources/application.properties). Each key can be overridden by an environment variable in UPPER_SNAKE_CASE (`db.pool-size` → `DB_POOL_SIZE`) or by a system property (`-Ddb.pool-size=8`). Precedence is system property > environment > file. Invalid values fail at startup, naming the key.
 
-Statements are read in a repeatable-read, read-only transaction, so the account and its entries come from one consistent snapshot. They are returned newest first and capped (`limit`, default 100, max 1000).
-
-### Transactions and failures
-
-`TransactionRunner.inTransaction(work)`:
-
-- begins, runs the work, commits;
-- on **any `Throwable`** (including `Error`) rolls back, then rethrows the original failure (a rollback failure is attached as *suppressed*, never masking the cause);
-- always restores connection defaults and returns it to the pool.
-
-Services contain no transaction code at all.
-
-### Error mapping
-
-| Situation | HTTP | `code` |
+| Key | Default | Meaning |
 |---|---|---|
-| Malformed JSON, unknown field, wrong type, invalid amount, bad parameter | 400 | `INVALID_REQUEST` |
-| Customer / account not found, unknown route | 404 | `NOT_FOUND` |
-| Wrong HTTP method (adds an `Allow` header) | 405 | `METHOD_NOT_ALLOWED` |
-| Duplicate customer tax number | 409 | `CONFLICT` |
-| Body larger than 64 KB | 413 | `PAYLOAD_TOO_LARGE` |
-| Insufficient funds | 422 | `INSUFFICIENT_FUNDS` |
-| Anything unexpected (including `Error`s) | 500 | `INTERNAL_ERROR` (generic message, details only in the log) |
+| `http.port` | 8080 | `0` picks an ephemeral port |
+| `http.max-body-bytes` | 65536 | Larger bodies get 413 |
+| `http.max-in-flight` / `http.acquire-timeout` / `http.retry-after` | 64 / 200ms / 1s | Bulkhead |
+| `db.pool-size` / `db.lock-timeout` | 32 / 10s | H2 pool and row-lock wait |
+| `account.locking` | PESSIMISTIC | or `OPTIMISTIC` |
+| `retry.max-attempts` / `retry.initial-backoff` / `retry.max-backoff` | 10 / 2ms / 100ms | Retry of lost races |
+| `statement.default-size` / `statement.max-size` | 100 / 1000 | Statement `limit` |
+| `money.max-amount` | 1000000000000.00 | Largest single movement |
 
-Errors look like `{"code":"INSUFFICIENT_FUNDS","message":"Insufficient funds for this operation."}`.
+Limits tied to the schema stay as constants next to the value objects: money scale 2 and the column widths 32/120. Making them configurable could contradict the DDL.
 
 ## API
 
-All bodies are JSON. Successful creations and money movements return `201`; reads return `200`.
+All bodies are JSON. Creations and money movements return `201`, and reads return `200`. Every `POST` accepts an optional `Idempotency-Key` header (at most 64 characters).
 
 | Method | Path | Body | Notes |
 |---|---|---|---|
-| GET | `/health` | | `{"status":"UP"}` |
+| GET | `/health` | | `{"status":"UP"}`; bypasses the bulkhead |
 | POST | `/api/customers` | `{"taxNumber","name"}` | 409 if the tax number exists |
 | GET | `/api/customers[?name=frag]` | | case-insensitive name search |
 | GET | `/api/customers/{taxNumber}` | | |
-| GET | `/api/customers/{taxNumber}/accounts` | | customer + their accounts |
+| GET | `/api/customers/{taxNumber}/accounts` | | customer and their accounts |
 | POST | `/api/accounts` | `{"taxNumber"}` | opens an account with balance 0 |
 | GET | `/api/accounts/{number}` | | |
 | POST | `/api/accounts/{number}/deposits` | `{"amount"}` | |
 | POST | `/api/accounts/{number}/withdrawals` | `{"amount"}` | 422 if funds are insufficient |
-| POST | `/api/accounts/{number}/transfers` | `{"toAccountNumber","amount"}` | atomic; returns both resulting accounts and a `transferId` |
+| POST | `/api/accounts/{number}/transfers` | `{"toAccountNumber","amount"}` | atomic; returns both accounts and a `transferId` |
 | GET | `/api/accounts/{number}/statement[?limit=n]` | | newest first |
 
-Note the API changed from v1 (a single polymorphic `POST /accounts/{n}` with a `type` field, and the `ammount` typo) to explicit, resource-style endpoints.
+### Errors
+
+Errors look like `{"code":"INSUFFICIENT_FUNDS","message":"Insufficient funds for this operation."}`.
+
+| Situation | HTTP | `code` |
+|---|---|---|
+| Malformed JSON, unknown field, invalid amount or parameter, key too long | 400 | `INVALID_REQUEST` |
+| Unknown customer, account or route | 404 | `NOT_FOUND` |
+| Wrong method (with an `Allow` header) | 405 | `METHOD_NOT_ALLOWED` |
+| Duplicate tax number | 409 | `CONFLICT` |
+| Concurrent conflict that outlived the retries | 409 | `CONCURRENT_MODIFICATION` |
+| Body too large | 413 | `PAYLOAD_TOO_LARGE` |
+| Insufficient funds | 422 | `INSUFFICIENT_FUNDS` |
+| Idempotency key reused with a different body | 422 | `IDEMPOTENCY_KEY_REUSED` |
+| Anything unexpected, including `Error`s | 500 | `INTERNAL_ERROR` (generic message; details only in the log) |
+| Bulkhead full (with `Retry-After`) | 503 | `OVERLOADED` |
 
 ## Running
 
-### With Docker (recommended)
+Requires JDK 21; the Gradle wrapper downloads Gradle itself.
 
 ```bash
-docker compose up --build            # API on http://localhost:8080
+./gradlew build          # compile, jOOQ codegen, unit + integration tests, coverage gate
+./gradlew run            # API on http://localhost:8080
+ACCOUNT_LOCKING=OPTIMISTIC ./gradlew run
 ```
 
-The image build runs the full test suite and the coverage gate, so a broken build never produces an image.
+Coverage report: `build/reports/jacoco/test/html/index.html`.
 
-Automated acceptance tests against the running container (exit code reflects the result):
+### With Docker
+
+The image build runs the full Gradle build, so a failing test never produces an image.
 
 ```bash
+docker compose up --build                                        # API on http://localhost:8080
 docker compose --profile test up --build --exit-code-from smoke-test
 docker compose --profile test down -v
 ```
 
-### Without Docker
+`scripts/smoke-test.sh` runs black-box checks with nothing but curl. It covers the full contract, 20 parallel withdrawals, 20 parallel retries of one transfer under one `Idempotency-Key` (applied once), and load shedding against a second container (`app-tight`) configured with a 1-slot bulkhead.
 
-Requires JDK 21 and Maven.
-
-```bash
-mvn verify                       # tests + coverage gate; report in target/site/jacoco/index.html
-java -jar target/transfereasy.jar
-```
-
-Configuration (environment variables): `PORT` (default 8080), `DB_POOL_SIZE` (default 32). Data is in memory only and is lost when the process stops.
-
-## Manual test cases (against the app in Docker)
-
-Start the app (`docker compose up --build -d`) and run these in order. `jq` is optional but handy.
+### Try it
 
 ```bash
-B=http://localhost:8080
-j='Content-Type: application/json'
-```
-
-**1. Create customers**
-```bash
-curl -i -X POST $B/api/customers -H "$j" -d '{"taxNumber":"111","name":"Ada Lovelace"}'   # 201
-curl -i -X POST $B/api/customers -H "$j" -d '{"taxNumber":"222","name":"Alan Turing"}'    # 201
-```
-
-**2. Duplicate customer → 409**
-```bash
-curl -i -X POST $B/api/customers -H "$j" -d '{"taxNumber":"111","name":"Someone else"}'
-```
-
-**3. Open accounts and keep the numbers**
-```bash
+B=http://localhost:8080; j='Content-Type: application/json'
+curl -s -X POST $B/api/customers -H "$j" -d '{"taxNumber":"111","name":"Ada Lovelace"}'
 A=$(curl -s -X POST $B/api/accounts -H "$j" -d '{"taxNumber":"111"}' | jq -r .number)
-C=$(curl -s -X POST $B/api/accounts -H "$j" -d '{"taxNumber":"222"}' | jq -r .number)
-```
-
-**4. Deposit → balance 100.00**
-```bash
 curl -s -X POST $B/api/accounts/$A/deposits -H "$j" -d '{"amount":100}'
+# retried withdrawal: applied once, second answer carries "Idempotent-Replayed: true"
+curl -si -X POST $B/api/accounts/$A/withdrawals -H "$j" -H 'Idempotency-Key: w-1' -d '{"amount":30}'
+curl -si -X POST $B/api/accounts/$A/withdrawals -H "$j" -H 'Idempotency-Key: w-1' -d '{"amount":30}'
+curl -s $B/api/accounts/$A/statement | jq .
 ```
 
-**5. Invalid amounts → 400**
-```bash
-curl -i -X POST $B/api/accounts/$A/deposits -H "$j" -d '{"amount":-1}'
-curl -i -X POST $B/api/accounts/$A/deposits -H "$j" -d '{"amount":1.001}'
-curl -i -X POST $B/api/accounts/$A/deposits -H "$j" -d '{"amount":"10"}'
-curl -i -X POST $B/api/accounts/$A/deposits -H "$j" -d '{"amount":5,"typo":1}'
-```
+## Test suites
 
-**6. Withdraw, then overdraft**
-```bash
-curl -s -X POST $B/api/accounts/$A/withdrawals -H "$j" -d '{"amount":30.50}'   # balance 69.50
-curl -i -X POST $B/api/accounts/$A/withdrawals -H "$j" -d '{"amount":1000}'    # 422, balance unchanged
-```
-
-**7. Transfer**
-```bash
-curl -s -X POST $B/api/accounts/$A/transfers -H "$j" -d "{\"toAccountNumber\":\"$C\",\"amount\":19.50}"
-curl -s $B/api/accounts/$A | jq .balance    # 50.00
-curl -s $B/api/accounts/$C | jq .balance    # 19.50
-```
-
-**8. Transfer failures** (all leave both balances untouched)
-```bash
-curl -i -X POST $B/api/accounts/$A/transfers -H "$j" -d "{\"toAccountNumber\":\"$A\",\"amount\":1}"      # 400 same account
-curl -i -X POST $B/api/accounts/$A/transfers -H "$j" -d '{"toAccountNumber":"ghost","amount":1}'        # 404
-curl -i -X POST $B/api/accounts/$A/transfers -H "$j" -d "{\"toAccountNumber\":\"$C\",\"amount\":9999}"  # 422
-```
-
-**9. Statement** (newest first, `balanceAfter` on every line, transfer lines share a `transferId`)
-```bash
-curl -s "$B/api/accounts/$A/statement" | jq .
-curl -s "$B/api/accounts/$A/statement?limit=1" | jq '.entries | length'   # 1
-curl -i "$B/api/accounts/$A/statement?limit=0"                            # 400
-```
-
-**10. Concurrent withdrawals must never overdraw.** Fund an account with 100, then fire 20 parallel withdrawals of 30. Exactly 3 must return 201, 17 must return 422, and the final balance must be 10.00.
-```bash
-D=$(curl -s -X POST $B/api/accounts -H "$j" -d '{"taxNumber":"111"}' | jq -r .number)
-curl -s -X POST $B/api/accounts/$D/deposits -H "$j" -d '{"amount":100}' >/dev/null
-for i in $(seq 20); do
-  curl -s -o /dev/null -w '%{http_code}\n' -X POST $B/api/accounts/$D/withdrawals -H "$j" -d '{"amount":30}' &
-done | sort | uniq -c ; wait
-curl -s $B/api/accounts/$D | jq .balance    # 10.00
-```
-
-**11. Concurrent opposite transfers must not deadlock.** Run `A→C` and `C→A` loops simultaneously; both finish and `balance(A)+balance(C)` is unchanged.
-```bash
-total() { echo "$(curl -s $B/api/accounts/$A | jq .balance) + $(curl -s $B/api/accounts/$C | jq .balance)" | bc; }
-T0=$(total)
-for i in $(seq 25); do
-  curl -s -o /dev/null -X POST $B/api/accounts/$A/transfers -H "$j" -d "{\"toAccountNumber\":\"$C\",\"amount\":0.01}" &
-  curl -s -o /dev/null -X POST $B/api/accounts/$C/transfers -H "$j" -d "{\"toAccountNumber\":\"$A\",\"amount\":0.01}" &
-done; wait
-echo "before=$T0 after=$(total)"
-```
-
-**12. Routing**
-```bash
-curl -i -X DELETE $B/api/customers     # 405 with "Allow: GET, POST"
-curl -i $B/api/nope                    # 404
-curl -i $B/api/accounts/ghost          # 404
-```
-
-The same scenarios (and more) are automated in `scripts/smoke-test.sh`, which `docker compose --profile test` runs.
-
-## Test suite
-
-| Suite | What it proves |
-|---|---|
-| `service/AccountServiceTest`, `CustomerServiceTest` | Business rules and edge cases, including that failures leave **no** trace (balances and ledger unchanged). |
-| `service/ConcurrencyTest` | Under 32-thread races: no overdraft, no lost updates, no deadlock, money conserved, ledger equals balances, exactly one winner for duplicate creation. Repeated runs to flush out flakiness. |
-| `db/TransactionRunnerTest` | Rollback and connection release after `RuntimeException`, `Error` and constraint violations, on a pool of size 1 (a leak would hang). |
-| `db/TransactionRunnerFailureTest` | Every JDBC failure mode (begin / commit / rollback / close / restore) via a scripted connection. |
-| `http/ApiTest` | End-to-end over real HTTP: all endpoints, status mapping, payload validation, 405/413, concurrent HTTP withdrawals. |
-| `http/RouterTest`, `JsonTest`, `HttpApplicationInternalsTest` | Routing, strict JSON, query parsing, and that unexpected errors (even `StackOverflowError`) become a generic 500 without leaking details. |
-| `domain/*`, `config/*`, `ApplicationLifecycleTest` | Amount validation, configuration, startup failure cleanup. |
-| `scripts/smoke-test.sh` (Docker) | Black-box acceptance checks against the real container, including a parallel-withdrawal race. |
-
-`mvn verify` currently reports roughly 98% line and 94% branch coverage (generated jOOQ code, `Main` and the container `HealthCheck` excluded).
+| Suite | Where | What it proves |
+|---|---|---|
+| Domain | `test/.../domain` | Value objects, the aggregate, `Transfer`: pure unit tests, no database |
+| Ports & adapters | `test/.../infrastructure/persistence` | Repository contracts on real H2, the version compare-and-set, pessimistic vs optimistic behaviour, transaction safety on a 1-connection pool |
+| Pipeline | `test/.../application/pipeline` | Bus routing and ordering; retry (deterministic fake sleeper and jitter); retry outside the transaction; idempotency |
+| Scenarios | `test/.../application/scenarios` | Business rules through the real core; **42 races** (7 scenarios × 2 strategies × 3 runs); idempotency storms |
+| HTTP | `test/.../infrastructure/http` | Routing, strict JSON, error mapping, bulkhead (latches), 503 with health exempt |
+| Integration | `integrationTest/` | The real application over HTTP: the full contract, plus 40-client races, opposite transfers, an idempotent retry storm and overload, for both strategies |
+| Smoke | `scripts/smoke-test.sh` | Black-box checks against the Docker containers |
 
 ## Trade-offs and limitations
 
-- **In-memory only.** Restarting loses all data (by design for this exercise).
-- **Single node.** Correctness comes from database locking; scaling out would need a shared database, which the same SQL would support.
-- **No authentication/authorization**, and no idempotency keys: a retried `POST` is applied twice. A production system would add both.
+- **In-memory only**: a restart loses all data, by design for this exercise. Correctness relies on database locking and constraints, so a shared database would support scaling out.
+- **Idempotency keys never expire.** A production system would add a TTL and a cleanup job.
+- **No authentication or authorisation.**
 - **Single currency.**
-- **The ledger is capped on read** (`limit`); there is no cursor pagination.
+- **Statements are capped** (`limit`); there is no cursor pagination.

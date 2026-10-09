@@ -3,7 +3,7 @@ FROM eclipse-temurin:21-jdk AS build
 WORKDIR /src
 COPY gradlew settings.gradle build.gradle ./
 COPY gradle ./gradle
-RUN ./gradlew --no-daemon -q dependencies > /dev/null
+RUN ./gradlew --no-daemon -q resolveDependencies
 COPY src ./src
 RUN ./gradlew --no-daemon -q build installDist
 

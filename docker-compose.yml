@@ -1,13 +1,29 @@
 services:
   app:
     build: .
+    image: transfereasy:local
     ports:
       - "8080:8080"
     environment:
+      # Any key from src/main/resources/application.properties, in UPPER_SNAKE_CASE.
       HTTP_PORT: "8080"
       DB_POOL_SIZE: "32"
+      ACCOUNT_LOCKING: "PESSIMISTIC"   # or OPTIMISTIC
 
-  # Black-box acceptance tests against the running container.
+  # Same image, deliberately tiny bulkhead, used by the smoke test to prove load shedding (503).
+  app-tight:
+    profiles: ["test"]
+    image: transfereasy:local
+    depends_on:
+      app:
+        condition: service_started
+    environment:
+      HTTP_PORT: "8080"
+      HTTP_MAX_IN_FLIGHT: "1"
+      HTTP_ACQUIRE_TIMEOUT: "0ms"
+      ACCOUNT_LOCKING: "OPTIMISTIC"
+
+  # Black-box acceptance tests against the running containers.
   # Run with:  docker compose --profile test up --build --exit-code-from smoke-test
   smoke-test:
     profiles: ["test"]
@@ -15,8 +31,11 @@ services:
     depends_on:
       app:
         condition: service_healthy
+      app-tight:
+        condition: service_healthy
     environment:
       BASE_URL: http://app:8080
+      TIGHT_URL: http://app-tight:8080
     volumes:
       - ./scripts/smoke-test.sh:/smoke-test.sh:ro
     entrypoint: ["/bin/sh", "/smoke-test.sh"]

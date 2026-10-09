@@ -2,19 +2,26 @@
 # Black-box acceptance tests for the running API. Needs only POSIX sh + curl.
 # Usage: BASE_URL=http://localhost:8080 ./scripts/smoke-test.sh
 BASE_URL="${BASE_URL:-http://localhost:8080}"
+TIGHT_URL="${TIGHT_URL:-}"   # optional: an instance with HTTP_MAX_IN_FLIGHT=1, HTTP_ACQUIRE_TIMEOUT=0ms
 PASS=0
 FAIL=0
 RUN="$(date +%s)$$"
 
-# call METHOD PATH [BODY]  -> sets STATUS and BODY
+# call METHOD PATH [BODY] [IDEMPOTENCY_KEY]  -> sets STATUS, BODY and REPLAYED
 call() {
-  if [ -n "$3" ]; then
-    RESP=$(curl -s -w '\n%{http_code}' -X "$1" -H 'Content-Type: application/json' -d "$3" "$BASE_URL$2")
+  HDRS=$(mktemp)
+  if [ -n "$4" ]; then
+    RESP=$(curl -s -D "$HDRS" -w '\n%{http_code}' -X "$1" -H 'Content-Type: application/json' \
+      -H "Idempotency-Key: $4" -d "$3" "$BASE_URL$2")
+  elif [ -n "$3" ]; then
+    RESP=$(curl -s -D "$HDRS" -w '\n%{http_code}' -X "$1" -H 'Content-Type: application/json' -d "$3" "$BASE_URL$2")
   else
-    RESP=$(curl -s -w '\n%{http_code}' -X "$1" "$BASE_URL$2")
+    RESP=$(curl -s -D "$HDRS" -w '\n%{http_code}' -X "$1" "$BASE_URL$2")
   fi
   STATUS=$(printf '%s' "$RESP" | tail -n 1)
   BODY=$(printf '%s' "$RESP" | sed '$d')
+  REPLAYED=$(grep -i '^Idempotent-Replayed:' "$HDRS" | tr -d '\r' | sed 's/^[^:]*: *//')
+  rm -f "$HDRS"
 }
 
 # json_field NAME -> first string/number value of "NAME" in $BODY
@@ -115,6 +122,51 @@ check "exactly 17 withdrawals refused" 17 "$(grep -c '^422$' "$OUT")"
 call GET "/api/accounts/$ACC_C"
 check "final balance is 10.00 (never negative)" 10.00 "$(json_field balance)"
 rm -f "$OUT"
+
+echo "== Idempotency-Key"
+call POST "/api/accounts/$ACC_A/withdrawals" '{"amount":5}' "smoke-$RUN"
+check "first keyed withdrawal -> 201" 201 "$STATUS"
+check "first keyed withdrawal is not a replay" "" "$REPLAYED"
+check "balance is 45.00" 45.00 "$(json_field balance)"
+call POST "/api/accounts/$ACC_A/withdrawals" '{"amount":5.00}' "smoke-$RUN"
+check "same key, same request -> 201" 201 "$STATUS"
+check "same key, same request is replayed" true "$REPLAYED"
+check "replay returns the original balance (45.00)" 45.00 "$(json_field balance)"
+call POST "/api/accounts/$ACC_A/withdrawals" '{"amount":6}' "smoke-$RUN"
+check "same key, different request -> 422" 422 "$STATUS"
+call GET "/api/accounts/$ACC_A"
+check "money left the account only once (45.00)" 45.00 "$(json_field balance)"
+
+echo "== Concurrency: 20 parallel retries of one transfer with the same Idempotency-Key"
+OUT=$(mktemp)
+for n in $(seq 1 20); do
+  curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' \
+    -H "Idempotency-Key: storm-$RUN" -d "{\"toAccountNumber\":\"$ACC_B\",\"amount\":10}" \
+    "$BASE_URL/api/accounts/$ACC_A/transfers" >>"$OUT" &
+done
+wait
+check "all 20 retries answered 201" 20 "$(grep -c '^201$' "$OUT")"
+call GET "/api/accounts/$ACC_A"
+check "transfer applied exactly once (A is 35.00)" 35.00 "$(json_field balance)"
+call GET "/api/accounts/$ACC_B"
+check "transfer applied exactly once (B is 29.50)" 29.50 "$(json_field balance)"
+rm -f "$OUT"
+
+if [ -n "$TIGHT_URL" ]; then
+  echo "== Load shedding: 30 parallel requests against a 1-slot bulkhead"
+  until curl -sf "$TIGHT_URL/health" >/dev/null; do sleep 1; done
+  OUT=$(mktemp)
+  for n in $(seq 1 30); do
+    curl -s -o /dev/null -w '%{http_code}\n' "$TIGHT_URL/api/customers" >>"$OUT" &
+  done
+  wait
+  SHED=$(grep -c '^503$' "$OUT")
+  OK=$(grep -c '^200$' "$OUT")
+  check "some requests were shed with 503" yes "$([ "$SHED" -gt 0 ] && echo yes || echo no)"
+  check "every request got 200 or 503" 30 "$((SHED + OK))"
+  check "health still answers while saturated" 200 "$(curl -s -o /dev/null -w '%{http_code}' "$TIGHT_URL/health")"
+  rm -f "$OUT"
+fi
 
 echo "== Routing"
 call DELETE /api/customers
