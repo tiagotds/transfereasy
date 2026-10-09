@@ -6,7 +6,8 @@ package br.com.tiagotds.transfereasy.domain.error;
  * may still be attached (e.g. the database error behind an exhausted retry).
  */
 public abstract sealed class DomainException extends RuntimeException
-        permits InvalidInput, NotFound, Conflict, InsufficientFunds, ConcurrentModification {
+        permits InvalidInput, NotFound, Conflict, InsufficientFunds, ConcurrentModification,
+        IdempotencyKeyReused {
 
     protected DomainException(String message) {
         this(message, null);

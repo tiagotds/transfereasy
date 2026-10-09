@@ -31,7 +31,7 @@ class ApiTest {
     private static String base;
     private static int sequence;
 
-    record Reply(int status, JsonNode body, String allow) {
+    record Reply(int status, JsonNode body, String allow, String replayed) {
     }
 
     @BeforeAll
@@ -47,12 +47,20 @@ class ApiTest {
     }
 
     private static Reply call(String method, String path, String body) throws Exception {
+        return call(method, path, body, null);
+    }
+
+    private static Reply call(String method, String path, String body, String idempotencyKey) throws Exception {
         var builder = HttpRequest.newBuilder(URI.create(base + path))
                 .method(method, body == null ? BodyPublishers.noBody() : BodyPublishers.ofString(body))
                 .header("Content-Type", "application/json");
+        if (idempotencyKey != null) {
+            builder.header("Idempotency-Key", idempotencyKey);
+        }
         var response = client.send(builder.build(), BodyHandlers.ofString());
         return new Reply(response.statusCode(), JSON.readTree(response.body()),
-                response.headers().firstValue("Allow").orElse(null));
+                response.headers().firstValue("Allow").orElse(null),
+                response.headers().firstValue("Idempotent-Replayed").orElse(null));
     }
 
     private static synchronized String uniqueTax() {
@@ -232,6 +240,26 @@ class ApiTest {
         assertEquals(3, statuses.stream().filter(s -> s == 201).count());
         assertEquals(37, statuses.stream().filter(s -> s == 422).count());
         assertEquals(0, BigDecimal.TEN.compareTo(call("GET", "/api/accounts/" + account, null).body().get("balance").decimalValue()));
+    }
+
+    @Test
+    void a_post_retried_with_the_same_idempotency_key_is_applied_once_and_replayed() throws Exception {
+        var account = newCustomerWithAccount("100");
+        var path = "/api/accounts/" + account + "/withdrawals";
+
+        var first = call("POST", path, "{\"amount\":30}", "withdraw-1-" + account);
+        var retry = call("POST", path, "{\"amount\":30.00}", "withdraw-1-" + account);
+        var reused = call("POST", path, "{\"amount\":31}", "withdraw-1-" + account);
+
+        assertEquals(201, first.status());
+        assertEquals(null, first.replayed());
+        assertEquals(201, retry.status());
+        assertEquals("true", retry.replayed());
+        assertEquals(first.body(), retry.body());
+        assertEquals(422, reused.status());
+        assertEquals("IDEMPOTENCY_KEY_REUSED", reused.body().get("code").asText());
+        assertEquals(0, new BigDecimal("70").compareTo(
+                call("GET", "/api/accounts/" + account, null).body().get("balance").decimalValue()));
     }
 
     @Test

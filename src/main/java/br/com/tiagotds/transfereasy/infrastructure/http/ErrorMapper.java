@@ -3,6 +3,7 @@ package br.com.tiagotds.transfereasy.infrastructure.http;
 import br.com.tiagotds.transfereasy.domain.error.ConcurrentModification;
 import br.com.tiagotds.transfereasy.domain.error.Conflict;
 import br.com.tiagotds.transfereasy.domain.error.DomainException;
+import br.com.tiagotds.transfereasy.domain.error.IdempotencyKeyReused;
 import br.com.tiagotds.transfereasy.domain.error.InsufficientFunds;
 import br.com.tiagotds.transfereasy.domain.error.InvalidInput;
 import br.com.tiagotds.transfereasy.domain.error.NotFound;
@@ -35,6 +36,7 @@ final class ErrorMapper {
             case Conflict c -> error(409, "CONFLICT", c.getMessage());
             case InsufficientFunds f -> error(422, "INSUFFICIENT_FUNDS", f.getMessage());
             case ConcurrentModification m -> error(409, "CONCURRENT_MODIFICATION", m.getMessage());
+            case IdempotencyKeyReused k -> error(422, "IDEMPOTENCY_KEY_REUSED", k.getMessage());
         };
     }
 

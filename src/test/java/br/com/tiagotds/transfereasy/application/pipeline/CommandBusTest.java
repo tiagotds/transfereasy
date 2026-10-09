@@ -108,6 +108,13 @@ class CommandBusTest {
     }
 
     @Test
+    void an_idempotency_key_longer_than_the_column_is_invalid() {
+        assertThrows(br.com.tiagotds.transfereasy.domain.error.InvalidInput.class,
+                () -> CommandContext.withIdempotencyKey("k".repeat(65)));
+        assertEquals("k".repeat(64), CommandContext.withIdempotencyKey("k".repeat(64)).idempotencyKey().orElseThrow());
+    }
+
+    @Test
     void the_empty_context_has_no_idempotency_key_and_blank_keys_are_ignored() {
         assertTrue(CommandContext.NONE.idempotencyKey().isEmpty());
         assertTrue(CommandContext.withIdempotencyKey("  ").idempotencyKey().isEmpty());

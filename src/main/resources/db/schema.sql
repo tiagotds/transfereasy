@@ -41,3 +41,14 @@ CREATE TABLE ledger_entries (
 );
 
 CREATE INDEX ix_ledger_account ON ledger_entries (account_id, id);
+
+-- Idempotency-Key registry. A key is claimed (inserted) in the same transaction as the operation it protects and
+-- completed with the serialised result before commit, so a committed row always carries a result and a rolled-back
+-- operation leaves the key free. The primary key decides which of several concurrent duplicates runs.
+CREATE TABLE idempotency_keys (
+    idempotency_key  VARCHAR(64)  PRIMARY KEY,
+    fingerprint      VARCHAR(64)  NOT NULL,
+    result_type      VARCHAR(32),
+    result_json      VARCHAR(16384),
+    created_at       TIMESTAMP WITH TIME ZONE NOT NULL
+);
