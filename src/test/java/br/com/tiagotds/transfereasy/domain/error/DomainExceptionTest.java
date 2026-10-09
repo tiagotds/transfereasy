@@ -17,6 +17,8 @@ class DomainExceptionTest {
                 Conflict.duplicateCustomer(TaxNumber.of("1")).getMessage());
         assertEquals("Insufficient funds for this operation.", new InsufficientFunds().getMessage());
         assertEquals("bad", new InvalidInput("bad").getMessage());
+        assertEquals("Idempotency-Key 'k' was already used for a different request.",
+                new IdempotencyKeyReused("k").getMessage());
         assertEquals("Account 'abc' was modified concurrently, please retry.",
                 ConcurrentModification.of(AccountNumber.of("abc")).getMessage());
     }
@@ -41,6 +43,7 @@ class DomainExceptionTest {
             case Conflict c -> "conflict";
             case InsufficientFunds f -> "funds";
             case ConcurrentModification m -> "concurrent";
+            case IdempotencyKeyReused k -> "reused";
         };
         assertEquals("funds", name);
     }

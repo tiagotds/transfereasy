@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import br.com.tiagotds.transfereasy.domain.error.ConcurrentModification;
 import br.com.tiagotds.transfereasy.domain.error.Conflict;
+import br.com.tiagotds.transfereasy.domain.error.IdempotencyKeyReused;
 import br.com.tiagotds.transfereasy.domain.error.InsufficientFunds;
 import br.com.tiagotds.transfereasy.domain.error.InvalidInput;
 import br.com.tiagotds.transfereasy.domain.error.NotFound;
@@ -31,6 +32,8 @@ class ErrorMapperTest {
         assertMaps(new InsufficientFunds(), 422, "INSUFFICIENT_FUNDS", "Insufficient funds for this operation.");
         assertMaps(ConcurrentModification.of(AccountNumber.of("a")), 409, "CONCURRENT_MODIFICATION",
                 "Account 'a' was modified concurrently, please retry.");
+        assertMaps(new IdempotencyKeyReused("k"), 422, "IDEMPOTENCY_KEY_REUSED",
+                "Idempotency-Key 'k' was already used for a different request.");
     }
 
     @Test

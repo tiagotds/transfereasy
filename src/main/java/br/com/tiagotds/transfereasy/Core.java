@@ -12,6 +12,8 @@ import br.com.tiagotds.transfereasy.application.handler.OpenAccountHandler;
 import br.com.tiagotds.transfereasy.application.handler.TransferHandler;
 import br.com.tiagotds.transfereasy.application.handler.WithdrawHandler;
 import br.com.tiagotds.transfereasy.application.pipeline.CommandBus;
+import br.com.tiagotds.transfereasy.application.pipeline.IdempotencyMiddleware;
+import br.com.tiagotds.transfereasy.application.pipeline.ResultCodec;
 import br.com.tiagotds.transfereasy.application.pipeline.RetryMiddleware;
 import br.com.tiagotds.transfereasy.application.pipeline.TransactionMiddleware;
 import br.com.tiagotds.transfereasy.application.query.AccountQueries;
@@ -19,9 +21,11 @@ import br.com.tiagotds.transfereasy.application.query.CustomerQueries;
 import br.com.tiagotds.transfereasy.infrastructure.config.Settings;
 import br.com.tiagotds.transfereasy.infrastructure.persistence.JooqAccountRepository;
 import br.com.tiagotds.transfereasy.infrastructure.persistence.JooqCustomerRepository;
+import br.com.tiagotds.transfereasy.infrastructure.persistence.JooqIdempotencyStore;
 import br.com.tiagotds.transfereasy.infrastructure.persistence.JooqLedgerRepository;
 import br.com.tiagotds.transfereasy.infrastructure.persistence.TransactionRunner;
 import java.time.Clock;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -38,6 +42,8 @@ public record Core(CommandBus commands, AccountQueries accounts, CustomerQueries
         var commands = CommandBus.builder()
                 .use(RetryMiddleware.withJitter(settings.retry()))
                 .use(new TransactionMiddleware(tx))
+                .use(new IdempotencyMiddleware(new JooqIdempotencyStore(() -> OffsetDateTime.now(clock)),
+                        new ResultCodec()))
                 .handle(CreateCustomer.class, new CreateCustomerHandler(customerRepository, clock))
                 .handle(OpenAccount.class, new OpenAccountHandler(customerRepository, accountRepository, clock, ids))
                 .handle(DepositMoney.class, new DepositHandler(movements))
