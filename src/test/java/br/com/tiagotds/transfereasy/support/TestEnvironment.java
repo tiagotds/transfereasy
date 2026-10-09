@@ -1,71 +1,135 @@
 package br.com.tiagotds.transfereasy.support;
 
-import br.com.tiagotds.transfereasy.infrastructure.persistence.Database;
-import br.com.tiagotds.transfereasy.infrastructure.persistence.TransactionRunner;
+import static br.com.tiagotds.transfereasy.jooq.Tables.ACCOUNTS;
+import static br.com.tiagotds.transfereasy.jooq.Tables.LEDGER_ENTRIES;
+
+import br.com.tiagotds.transfereasy.Core;
+import br.com.tiagotds.transfereasy.application.command.CreateCustomer;
+import br.com.tiagotds.transfereasy.application.command.DepositMoney;
+import br.com.tiagotds.transfereasy.application.command.OpenAccount;
+import br.com.tiagotds.transfereasy.application.command.TransferMoney;
+import br.com.tiagotds.transfereasy.application.command.WithdrawMoney;
+import br.com.tiagotds.transfereasy.domain.model.Account;
+import br.com.tiagotds.transfereasy.domain.model.AccountNumber;
+import br.com.tiagotds.transfereasy.domain.model.Customer;
+import br.com.tiagotds.transfereasy.domain.model.CustomerName;
+import br.com.tiagotds.transfereasy.domain.model.Statement;
+import br.com.tiagotds.transfereasy.domain.model.TaxNumber;
+import br.com.tiagotds.transfereasy.domain.model.TransferReceipt;
 import br.com.tiagotds.transfereasy.infrastructure.config.Config;
 import br.com.tiagotds.transfereasy.infrastructure.config.Settings;
-import br.com.tiagotds.transfereasy.infrastructure.persistence.JooqAccountRepository;
-import br.com.tiagotds.transfereasy.infrastructure.persistence.JooqCustomerRepository;
-import br.com.tiagotds.transfereasy.infrastructure.persistence.JooqLedgerRepository;
-import br.com.tiagotds.transfereasy.service.AccountService;
-import br.com.tiagotds.transfereasy.service.CustomerService;
+import br.com.tiagotds.transfereasy.infrastructure.persistence.Database;
+import br.com.tiagotds.transfereasy.infrastructure.persistence.TransactionRunner;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.UUID;
+import org.jooq.Field;
+import org.jooq.impl.DSL;
 
-import static br.com.tiagotds.transfereasy.jooq.Tables.ACCOUNTS;
-import static br.com.tiagotds.transfereasy.jooq.Tables.LEDGER_ENTRIES;
-
-/** A fully wired, isolated service stack on its own in-memory database. One per test. */
+/**
+ * A fully wired, isolated core on its own in-memory database, one per test. The helpers take raw strings like the
+ * HTTP edge does, so scenario tests read like API calls.
+ */
 public final class TestEnvironment implements AutoCloseable {
 
     public static final Clock FIXED_CLOCK = Clock.fixed(Instant.parse("2026-01-15T10:00:00Z"), ZoneOffset.UTC);
 
     public final Database database;
     public final TransactionRunner tx;
-    public final CustomerService customers;
-    public final AccountService accounts;
+    public final Core core;
 
-    public TestEnvironment(int poolSize) {
-        var settings = Settings.from(Config.defaults().with("db.pool-size", String.valueOf(poolSize)));
+    public TestEnvironment(Config config) {
+        var settings = Settings.from(config);
         this.database = Database.startInMemory("test-" + UUID.randomUUID(), settings.database());
         this.tx = new TransactionRunner(database);
-        var customerRepo = new JooqCustomerRepository();
-        var accountRepo = new JooqAccountRepository();
-        this.customers = new CustomerService(tx, customerRepo, accountRepo, FIXED_CLOCK);
-        this.accounts = new AccountService(tx, customerRepo, accountRepo, new JooqLedgerRepository(),
-                FIXED_CLOCK, UUID::randomUUID, settings.statements(), settings.money().amountPolicy());
+        this.core = Core.wire(settings, tx, FIXED_CLOCK, UUID::randomUUID);
+    }
+
+    public TestEnvironment(int poolSize) {
+        this(Config.defaults().with("db.pool-size", String.valueOf(poolSize)));
     }
 
     public TestEnvironment() {
         this(16);
     }
 
+    // ---- commands
+
+    public Customer createCustomer(String taxNumber, String name) {
+        return core.commands().execute(new CreateCustomer(TaxNumber.of(taxNumber), CustomerName.of(name)));
+    }
+
+    public Account open(String taxNumber) {
+        return core.commands().execute(new OpenAccount(TaxNumber.of(taxNumber)));
+    }
+
+    public Account deposit(String number, BigDecimal amount) {
+        return core.commands().execute(new DepositMoney(AccountNumber.of(number), amount));
+    }
+
+    public Account withdraw(String number, BigDecimal amount) {
+        return core.commands().execute(new WithdrawMoney(AccountNumber.of(number), amount));
+    }
+
+    public TransferReceipt transfer(String from, String to, BigDecimal amount) {
+        return core.commands().execute(new TransferMoney(AccountNumber.of(from),
+                AccountNumber.of(to, "toAccountNumber"), amount));
+    }
+
+    // ---- queries
+
+    public Account account(String number) {
+        return core.accounts().get(AccountNumber.of(number));
+    }
+
+    public Statement statement(String number, Integer limit) {
+        return core.accounts().statement(AccountNumber.of(number), limit);
+    }
+
+    public Customer customer(String taxNumber) {
+        return core.customers().get(TaxNumber.of(taxNumber));
+    }
+
+    public List<Customer> search(String fragment) {
+        return core.customers().search(fragment);
+    }
+
+    public List<Account> accountsOf(String taxNumber) {
+        return core.customers().accountsOf(TaxNumber.of(taxNumber)).accounts();
+    }
+
+    // ---- fixtures and invariants
+
     /** Creates a customer with one account holding {@code balance}, and returns the account number. */
     public String accountWithBalance(String taxNumber, String balance) {
-        customers.create(taxNumber, "Customer " + taxNumber);
-        var number = accounts.open(taxNumber).number().value();
+        createCustomer(taxNumber, "Customer " + taxNumber);
+        var number = open(taxNumber).number().value();
         if (new BigDecimal(balance).signum() > 0) {
-            accounts.deposit(number, new BigDecimal(balance));
+            deposit(number, new BigDecimal(balance));
         }
         return number;
     }
 
     public BigDecimal balanceOf(String accountNumber) {
-        return accounts.get(accountNumber).balance().value();
+        return account(accountNumber).balance().value();
     }
 
     public BigDecimal totalOfAllBalances() {
-        return tx.inReadOnlyTransaction(() -> TransactionRunner.current().select(org.jooq.impl.DSL.coalesce(
-                        org.jooq.impl.DSL.sum(ACCOUNTS.BALANCE), BigDecimal.ZERO)).from(ACCOUNTS).fetchSingle().value1());
+        return sum(ACCOUNTS.BALANCE);
     }
 
     /** Sum of every ledger line: must always equal {@link #totalOfAllBalances()} (double-entry invariant). */
     public BigDecimal totalOfAllLedgerEntries() {
-        return tx.inReadOnlyTransaction(() -> TransactionRunner.current().select(org.jooq.impl.DSL.coalesce(
-                        org.jooq.impl.DSL.sum(LEDGER_ENTRIES.AMOUNT), BigDecimal.ZERO)).from(LEDGER_ENTRIES)
+        return sum(LEDGER_ENTRIES.AMOUNT);
+    }
+
+    private BigDecimal sum(Field<BigDecimal> column) {
+        return tx.inReadOnlyTransaction(() -> TransactionRunner.current()
+                .select(DSL.coalesce(DSL.sum(column), BigDecimal.ZERO))
+                .from(column.getQualifiedName().first())
                 .fetchSingle().value1());
     }
 
