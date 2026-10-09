@@ -64,6 +64,16 @@ class JooqAccountRepositoryTest extends RepositoryTestBase {
     }
 
     @Test
+    void find_all_reads_without_locking_in_id_order() {
+        var first = open("B");
+        var second = open("A");
+
+        var found = tx(() -> accounts.findAll(List.of(AccountNumber.of("A"), AccountNumber.of("B"))));
+
+        assertEquals(List.of(first.id(), second.id()), found.stream().map(Account::id).toList());
+    }
+
+    @Test
     void saving_a_movement_persists_the_new_balance_and_version() {
         open("A");
         var moved = reload("A").deposit(Money.of("10"), NOW).account();

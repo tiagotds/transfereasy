@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import br.com.tiagotds.transfereasy.domain.model.Money;
+import br.com.tiagotds.transfereasy.infrastructure.persistence.LockingStrategy;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
@@ -18,6 +19,7 @@ class SettingsTest {
         assertEquals(new StatementSettings(100, 1000), settings.statements());
         assertEquals(Money.of("1000000000000"), settings.money().maxAmount());
         assertEquals(new RetrySettings(10, Duration.ofMillis(2), Duration.ofMillis(100)), settings.retry());
+        assertEquals(LockingStrategy.PESSIMISTIC, settings.locking());
     }
 
     @Test
