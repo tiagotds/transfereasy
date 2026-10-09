@@ -49,5 +49,8 @@ class ErrorMapperTest {
         assertEquals(405, notAllowed.status());
         assertEquals(Map.of("Allow", "GET, POST"), notAllowed.headers());
         assertEquals(413, ErrorMapper.payloadTooLarge().status());
+        var overloaded = ErrorMapper.overloaded(java.time.Duration.ofMillis(1500));
+        assertEquals(503, overloaded.status());
+        assertEquals(Map.of("Retry-After", "2"), overloaded.headers(), "whole seconds, rounded up");
     }
 }

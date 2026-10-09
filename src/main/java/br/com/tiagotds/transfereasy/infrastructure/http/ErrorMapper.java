@@ -7,6 +7,7 @@ import br.com.tiagotds.transfereasy.domain.error.IdempotencyKeyReused;
 import br.com.tiagotds.transfereasy.domain.error.InsufficientFunds;
 import br.com.tiagotds.transfereasy.domain.error.InvalidInput;
 import br.com.tiagotds.transfereasy.domain.error.NotFound;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -47,6 +48,13 @@ final class ErrorMapper {
     static HttpResponse methodNotAllowed(Set<String> allowed) {
         return error(405, "METHOD_NOT_ALLOWED", "Method not allowed.")
                 .withHeader("Allow", String.join(", ", new TreeSet<>(allowed)));
+    }
+
+    /** {@code Retry-After} is in whole seconds, rounded up so clients never come back too early. */
+    static HttpResponse overloaded(Duration retryAfter) {
+        long seconds = Math.max(1, (retryAfter.toMillis() + 999) / 1000);
+        return error(503, "OVERLOADED", "Server is busy, please retry later.")
+                .withHeader("Retry-After", String.valueOf(seconds));
     }
 
     static HttpResponse payloadTooLarge() {
