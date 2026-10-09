@@ -1,8 +1,11 @@
-package br.com.tiagotds.transfereasy.http;
+package br.com.tiagotds.transfereasy.infrastructure.http;
 
+import br.com.tiagotds.transfereasy.application.query.CustomerAccounts;
 import br.com.tiagotds.transfereasy.domain.model.Account;
 import br.com.tiagotds.transfereasy.domain.model.Customer;
 import br.com.tiagotds.transfereasy.domain.model.LedgerEntry;
+import br.com.tiagotds.transfereasy.domain.model.Statement;
+import br.com.tiagotds.transfereasy.domain.model.TransferReceipt;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -40,6 +43,10 @@ public final class Dtos {
     }
 
     public record CustomerAccountsResponse(CustomerResponse customer, List<AccountResponse> accounts) {
+        static CustomerAccountsResponse of(CustomerAccounts c) {
+            return new CustomerAccountsResponse(CustomerResponse.of(c.customer()),
+                    c.accounts().stream().map(AccountResponse::of).toList());
+        }
     }
 
     public record EntryResponse(long id, String kind, BigDecimal amount, BigDecimal balanceAfter,
@@ -51,8 +58,15 @@ public final class Dtos {
     }
 
     public record StatementResponse(AccountResponse account, List<EntryResponse> entries) {
+        static StatementResponse of(Statement s) {
+            return new StatementResponse(AccountResponse.of(s.account()),
+                    s.entries().stream().map(EntryResponse::of).toList());
+        }
     }
 
     public record TransferResponse(String transferId, AccountResponse from, AccountResponse to) {
+        static TransferResponse of(TransferReceipt r) {
+            return new TransferResponse(r.transferId(), AccountResponse.of(r.from()), AccountResponse.of(r.to()));
+        }
     }
 }

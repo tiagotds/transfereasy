@@ -1,4 +1,4 @@
-package br.com.tiagotds.transfereasy.http;
+package br.com.tiagotds.transfereasy.infrastructure.http;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -49,9 +49,9 @@ class RouterTest {
     @Test
     void handlers_receive_the_request() {
         var found = assertInstanceOf(Router.Match.Found.class, router.match("GET", "/things/7"));
-        var request = new HttpRequest("GET", "/things/7", Map.of("q", "1"), new byte[0], found.params());
+        var request = new HttpRequest("GET", "/things/7", Map.of("q", "1"), new byte[0], found.params(), Map.of());
 
-        var response = found.handler().apply(request);
+        var response = found.handler().handle(request);
 
         assertEquals(200, response.status());
         assertEquals("7", response.body());

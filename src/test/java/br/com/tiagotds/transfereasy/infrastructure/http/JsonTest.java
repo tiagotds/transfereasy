@@ -1,9 +1,9 @@
-package br.com.tiagotds.transfereasy.http;
+package br.com.tiagotds.transfereasy.infrastructure.http;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import br.com.tiagotds.transfereasy.http.Dtos.AmountRequest;
+import br.com.tiagotds.transfereasy.infrastructure.http.Dtos.AmountRequest;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;

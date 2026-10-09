@@ -1,4 +1,4 @@
-package br.com.tiagotds.transfereasy.http;
+package br.com.tiagotds.transfereasy.infrastructure.http;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -6,16 +6,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.function.Function;
 
 /** Minimal method + path-template router ({@code /accounts/{number}/deposits}). */
 public final class Router {
 
-    private record Route(String method, String[] segments, Function<HttpRequest, HttpResponse> handler) {
+    private record Route(String method, String[] segments, HttpRoute handler) {
     }
 
     public sealed interface Match {
-        record Found(Function<HttpRequest, HttpResponse> handler, Map<String, String> params) implements Match {
+        record Found(HttpRoute handler, Map<String, String> params) implements Match {
         }
 
         record MethodNotAllowed(Set<String> allowed) implements Match {
@@ -27,7 +26,7 @@ public final class Router {
 
     private final List<Route> routes = new ArrayList<>();
 
-    public Router add(String method, String template, Function<HttpRequest, HttpResponse> handler) {
+    public Router add(String method, String template, HttpRoute handler) {
         routes.add(new Route(method, split(template), handler));
         return this;
     }

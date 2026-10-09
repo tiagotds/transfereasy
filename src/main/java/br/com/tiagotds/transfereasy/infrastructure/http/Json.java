@@ -1,4 +1,4 @@
-package br.com.tiagotds.transfereasy.http;
+package br.com.tiagotds.transfereasy.infrastructure.http;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.StreamReadFeature;

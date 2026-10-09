@@ -1,11 +1,5 @@
-package br.com.tiagotds.transfereasy.http;
+package br.com.tiagotds.transfereasy.infrastructure.http;
 
-import br.com.tiagotds.transfereasy.domain.error.ConcurrentModification;
-import br.com.tiagotds.transfereasy.domain.error.Conflict;
-import br.com.tiagotds.transfereasy.domain.error.DomainException;
-import br.com.tiagotds.transfereasy.domain.error.InsufficientFunds;
-import br.com.tiagotds.transfereasy.domain.error.InvalidInput;
-import br.com.tiagotds.transfereasy.domain.error.NotFound;
 import br.com.tiagotds.transfereasy.infrastructure.config.HttpSettings;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -58,56 +52,30 @@ public final class HttpApplication implements AutoCloseable {
 
     private void handle(HttpExchange exchange) throws IOException {
         try (exchange) {
-            var response = dispatch(exchange);
-            write(exchange, response);
+            write(exchange, dispatch(exchange));
         }
     }
 
-    private record Reply(int status, Object body, Map<String, String> headers) {
-    }
-
-    private Reply dispatch(HttpExchange exchange) {
+    private HttpResponse dispatch(HttpExchange exchange) {
         try {
             var method = exchange.getRequestMethod();
             var uri = exchange.getRequestURI();
             return switch (router.match(method, uri.getPath())) {
-                case Router.Match.NotFound ignored ->
-                        error(404, "NOT_FOUND", "No such resource.", Map.of());
-                case Router.Match.MethodNotAllowed m ->
-                        error(405, "METHOD_NOT_ALLOWED", "Method not allowed.",
-                                Map.of("Allow", String.join(", ", m.allowed())));
+                case Router.Match.NotFound ignored -> ErrorMapper.noRoute();
+                case Router.Match.MethodNotAllowed m -> ErrorMapper.methodNotAllowed(m.allowed());
                 case Router.Match.Found found -> {
                     var body = readBody(exchange);
                     if (body == null) {
-                        yield error(413, "PAYLOAD_TOO_LARGE", "Request body too large.", Map.of());
+                        yield ErrorMapper.payloadTooLarge();
                     }
-                    var request = new HttpRequest(method, uri.getPath(), parseQuery(uri.getRawQuery()), body,
-                            found.params());
-                    var result = found.handler().apply(request);
-                    yield new Reply(result.status(), result.body(), Map.of());
+                    yield found.handler().handle(new HttpRequest(method, uri.getPath(), parseQuery(uri.getRawQuery()),
+                            body, found.params(), headers(exchange)));
                 }
             };
-        } catch (DomainException e) {
-            return fromDomain(e);
         } catch (Throwable t) {
             // Includes Errors: a request must always get an answer and must never leak internals.
-            LOG.log(Level.SEVERE, "Unhandled error while serving request", t);
-            return error(500, "INTERNAL_ERROR", "Unexpected error.", Map.of());
+            return ErrorMapper.toResponse(t);
         }
-    }
-
-    private static Reply fromDomain(DomainException e) {
-        return switch (e) {
-            case InvalidInput i -> error(400, "INVALID_REQUEST", i.getMessage(), Map.of());
-            case NotFound n -> error(404, "NOT_FOUND", n.getMessage(), Map.of());
-            case Conflict c -> error(409, "CONFLICT", c.getMessage(), Map.of());
-            case InsufficientFunds f -> error(422, "INSUFFICIENT_FUNDS", f.getMessage(), Map.of());
-            case ConcurrentModification m -> error(409, "CONCURRENT_MODIFICATION", m.getMessage(), Map.of());
-        };
-    }
-
-    private static Reply error(int status, String code, String message, Map<String, String> headers) {
-        return new Reply(status, new ApiError(code, message), headers);
     }
 
     /** @return the body bytes, or {@code null} when the limit is exceeded. */
@@ -116,6 +84,16 @@ public final class HttpApplication implements AutoCloseable {
             var bytes = in.readNBytes(maxBodyBytes + 1);
             return bytes.length > maxBodyBytes ? null : bytes;
         }
+    }
+
+    private static Map<String, String> headers(HttpExchange exchange) {
+        var result = new HashMap<String, String>();
+        exchange.getRequestHeaders().forEach((name, values) -> {
+            if (!values.isEmpty()) {
+                result.put(name, values.getFirst());
+            }
+        });
+        return result;
     }
 
     static Map<String, String> parseQuery(String raw) {
@@ -139,11 +117,11 @@ public final class HttpApplication implements AutoCloseable {
         return URLDecoder.decode(s, StandardCharsets.UTF_8);
     }
 
-    private static void write(HttpExchange exchange, Reply reply) throws IOException {
-        var bytes = Json.write(reply.body());
+    private static void write(HttpExchange exchange, HttpResponse response) throws IOException {
+        var bytes = Json.write(response.body());
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-        reply.headers().forEach((k, v) -> exchange.getResponseHeaders().set(k, v));
-        exchange.sendResponseHeaders(reply.status(), bytes.length);
+        response.headers().forEach((k, v) -> exchange.getResponseHeaders().set(k, v));
+        exchange.sendResponseHeaders(response.status(), bytes.length);
         try (var out = exchange.getResponseBody()) {
             out.write(bytes);
         }

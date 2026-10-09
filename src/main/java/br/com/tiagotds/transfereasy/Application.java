@@ -1,7 +1,7 @@
 package br.com.tiagotds.transfereasy;
 
-import br.com.tiagotds.transfereasy.http.ApiRoutes;
-import br.com.tiagotds.transfereasy.http.HttpApplication;
+import br.com.tiagotds.transfereasy.infrastructure.http.ApiRoutes;
+import br.com.tiagotds.transfereasy.infrastructure.http.HttpApplication;
 import br.com.tiagotds.transfereasy.infrastructure.config.Settings;
 import br.com.tiagotds.transfereasy.infrastructure.persistence.Database;
 import br.com.tiagotds.transfereasy.infrastructure.persistence.TransactionRunner;

@@ -1,4 +1,4 @@
-package br.com.tiagotds.transfereasy.http;
+package br.com.tiagotds.transfereasy.infrastructure.http;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -36,7 +36,8 @@ class HttpApplicationInternalsTest {
                 })
                 .add("GET", "/fatal", r -> {
                     throw new StackOverflowError("secret fatal detail");
-                });
+                })
+                .add("GET", "/echo", r -> HttpResponse.ok(r.header("X-Probe")).withHeader("X-Answer", "42"));
         try (var app = new HttpApplication(new HttpSettings(0, 1024), router)) {
             app.start();
             var client = HttpClient.newHttpClient();
@@ -48,6 +49,10 @@ class HttpApplicationInternalsTest {
                 assertTrue(response.body().contains("INTERNAL_ERROR"));
                 assertTrue(!response.body().contains("secret"), "internal details must not leak");
             }
+            var echo = client.send(HttpRequest.newBuilder(URI.create("http://localhost:" + app.port() + "/echo"))
+                    .header("x-probe", "hello").build(), BodyHandlers.ofString());
+            assertEquals("\"hello\"", echo.body(), "request headers reach handlers");
+            assertEquals("42", echo.headers().firstValue("X-Answer").orElseThrow(), "handler headers are sent");
             // the server must still be alive after the failures
             var health = client.send(HttpRequest.newBuilder(
                     URI.create("http://localhost:" + app.port() + "/boom")).build(), BodyHandlers.ofString());
